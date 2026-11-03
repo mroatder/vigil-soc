@@ -192,6 +192,58 @@ def test_local_report_survives_bad_model_output():
     assert "## ผลวิเคราะห์ Local AI" in plain
 
 
+def test_lan_address_is_limited_to_this_computer():
+    with tempfile.TemporaryDirectory() as folder:
+        old_file, old_ip = app.LAN_IP_FILE, app.LAN_IP
+        app.LAN_IP_FILE = Path(folder) / "lan_ip.txt"
+        try:
+            assert app.read_lan_ip() == ""
+            for bad in ("0.0.0.0", "127.0.0.1", "8.8.8.8", "not-an-ip", "::1"):
+                app.LAN_IP_FILE.write_text(bad, encoding="utf-8")
+                assert app.read_lan_ip() == "", bad
+            app.LAN_IP_FILE.write_text("\ufeff10.20.30.40\n", encoding="utf-8")
+            assert app.read_lan_ip() == "10.20.30.40"
+            app.LAN_IP = "10.20.30.40"
+            allow = app.ConsoleServer.verify_request
+            assert allow(None, None, ("127.0.0.1", 5000))
+            assert allow(None, None, ("10.20.30.40", 5000))
+            assert not allow(None, None, ("10.20.30.41", 5000))
+            app.LAN_PASSWORD = "a-long-test-password"
+            assert allow(None, None, ("10.20.30.41", 5000))
+            assert not allow(None, None, ("8.8.8.8", 5000))
+            app.LAN_PASSWORD = ""
+            app.LAN_IP = ""
+            assert not allow(None, None, ("", 5000))
+        finally:
+            app.LAN_IP_FILE, app.LAN_IP = old_file, old_ip
+
+
+def test_password_login_locks_after_failures():
+    with tempfile.TemporaryDirectory() as folder:
+        old_file, old_password = app.LAN_PASSWORD_FILE, app.LAN_PASSWORD
+        app.LAN_PASSWORD_FILE = Path(folder) / "lan_password.txt"
+        try:
+            created = app.read_lan_password()
+            assert len(created) >= app.MIN_PASSWORD and created == app.read_lan_password()
+            app.LAN_PASSWORD_FILE.write_text("short", encoding="utf-8")
+            assert app.read_lan_password() == ""
+            app.LAN_PASSWORD = ""
+            assert app.try_login("10.0.0.8", "", 100.0) == ""
+            app.LOGIN_FAILURES.clear()
+            app.LAN_PASSWORD = created
+            token = app.try_login("10.0.0.5", created, 100.0)
+            assert token and app.login_valid(token, 101.0)
+            assert not app.login_valid(token, 100.0 + app.LOGIN_HOURS * 3600 + 1)
+            for _ in range(app.LOGIN_TRIES):
+                assert app.try_login("10.0.0.9", "wrong", 200.0) == ""
+            assert app.login_locked("10.0.0.9", 201.0)
+            assert not app.login_locked("10.0.0.9", 200.0 + app.LOGIN_LOCK_SECONDS + 1)
+        finally:
+            app.LAN_PASSWORD_FILE, app.LAN_PASSWORD = old_file, old_password
+            app.LOGIN_FAILURES.clear()
+            app.LOGINS.clear()
+
+
 def test_server_flow():
     app.call_ollama = lambda alert: "Local saw 10.20.30.254 on APP-SERVER-01"
     seen = {}
@@ -288,5 +340,7 @@ if __name__ == "__main__":
     test_failed_save_does_not_stop_analysis()
     test_local_report_uses_alert_facts_over_model()
     test_local_report_survives_bad_model_output()
+    test_lan_address_is_limited_to_this_computer()
+    test_password_login_locks_after_failures()
     test_server_flow()
     print("all tests passed")

@@ -4,6 +4,8 @@ environment.txt
 company-logo.*
 history.db
 history.db-*
+lan_ip.txt
+lan_password.txt
 Modelfile
 Modelfile-*
 !Modelfile.example

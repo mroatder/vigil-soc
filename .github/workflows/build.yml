@@ -44,9 +44,15 @@ jobs:
           VIGIL_NO_BROWSER: "1"
           VIGIL_DATA_DIR: ${{ runner.temp }}\vigil-smoke
         run: |
+          $lanIp = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -match '^(10|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.' } | Select-Object -First 1).IPAddress
+          if ($lanIp) { $env:VIGIL_LAN_IP = $lanIp }
           $process = Start-Process dist\Vigil.exe -PassThru
           Start-Sleep -Seconds 8
           $page = Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing
+          if ($lanIp) {
+            $own = Invoke-WebRequest "http://${lanIp}:8765/" -UseBasicParsing
+            if ($own.Content -notmatch 'name="app-token"') { throw 'Vigil did not open on the network address' }
+          }
           if ($page.Content -notmatch 'name="app-can-quit" content="true"') { throw 'Vigil did not start without a console' }
           $second = Start-Process dist\Vigil.exe -PassThru
           if (-not $second.WaitForExit(15000)) { throw 'A second start did not hand over to the running app' }

@@ -114,11 +114,9 @@ that fits the pattern only if you label it "เป็นไปได้ ยั�
 Warn before actions that could disrupt production.
 
 Output format:
-- Put the entire answer inside one code block that opens with ````markdown and
-  closes with ````, so the user can copy it in one click. Write nothing outside.
-- Inside it, use Markdown: "## " for each heading above, tables where they help,
-  and fenced code blocks for commands and queries.
-- Start with these four blocks, before the first heading.
+- Output your entire answer as a single continuous Markdown response. Do NOT wrap your whole response in a top-level outer code block (do not wrap everything in ````markdown).
+- Use standard Markdown: "## " for each numbered heading above, Markdown tables where helpful, and standard fenced code blocks for commands or queries.
+- Start your response directly with these four blocks, before heading 1:
 
 ```summary
 severity: Info, Low, Medium, High, or Critical

@@ -451,6 +451,17 @@ onUnmounted(() => {
           <input v-model="includeLocal" type="checkbox" class="w-[18px] h-[18px] accent-[var(--tint)]" @change="toggleLocal">แนบผล Local AI
         </label>
         <p v-if="localBusy" class="text-soft" role="status">Local AI กำลังสร้างรายงาน อาจใช้เวลาประมาณ 1-2 นาที</p>
+        <div class="bg-raised rounded-xl p-3.5 text-[13.5px] leading-relaxed text-soft grid gap-1.5 border border-line">
+          <strong class="text-ink font-medium flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-tint shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            วิธีนำไปใช้กับ Gemini / ChatGPT / Claude:
+          </strong>
+          <ol class="list-decimal list-inside space-y-1">
+            <li>กด <b>คัดลอกข้อความ</b> หรือ <b>ดาวน์โหลด .md</b> แล้วส่งให้ AI ที่คุณต้องการ</li>
+            <li>เมื่อ AI ตอบกลับ ให้กด <b>ปุ่มคัดลอกทั้งคำตอบ (ไอคอนกระดาษซ้อนกันที่แถบล่างสุดของคำตอบ AI)</b> <i>*ห้ามก๊อปปี้แยกกล่องโค้ด*</i></li>
+            <li>นำข้อความทั้งหมดมาวางที่ช่องด้านล่างนี้ แล้วกดส่ง เพื่อเปิดหน้า Visual Dashboard ทันที</li>
+          </ol>
+        </div>
         <div class="flex flex-wrap items-center gap-3">
           <button type="button" class="min-h-[44px] px-5 rounded-full bg-fill text-white font-normal" @click="copyPrompt">คัดลอกข้อความ</button>
           <button type="button" class="min-h-[44px] px-5 rounded-full bg-fill text-white font-normal" @click="downloadPromptFile">ดาวน์โหลด .md</button>

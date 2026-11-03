@@ -1047,8 +1047,10 @@ class Handler(BaseHTTPRequestHandler):
         system_prompt = claude_system()
         content = (
             "# Vigil SOC — AI Analysis Request\n\n"
-            "> Copy this entire file and paste it into any AI chat (ChatGPT, Gemini, Claude, etc.)\n"
-            "> The AI **must** follow the output format instructions in the System Prompt section.\n\n"
+            "> **คำแนะนำวิธีใช้งาน:**\n"
+            "> 1. คัดลอกเนื้อหาทั้งหมดในไฟล์นี้ ไปส่งให้ AI ภายนอก (ChatGPT, Gemini, Claude ฯลฯ)\n"
+            "> 2. เมื่อ AI ตอบกลับมา ให้กด **ปุ่มคัดลอก (Copy) ทั้งข้อความที่แถบล่างสุดใต้คำตอบของ AI** (ห้ามก๊อปปี้แยกทีละกล่องโค้ด)\n"
+            "> 3. นำข้อความที่คัดลอกมา วางในช่องแชตของ Vigil แล้วกดส่ง เพื่อเรนเดอร์ Visual Dashboard ทันที\n\n"
             "---\n\n"
             "## System Prompt\n\n"
             "Paste the block below as the **System** / **Custom Instructions** field in the AI you are using,\n"

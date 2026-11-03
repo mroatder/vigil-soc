@@ -417,7 +417,7 @@ onUnmounted(() => {
     <main class="flex-1 w-full max-w-[820px] mx-auto px-4 pt-6 pb-8 grid gap-6 content-start">
       <section v-if="stage === 'alert' && !alertText" class="pt-[14vh] pb-6 max-w-[34em]">
         <h1 class="text-[34px] leading-[1.25] font-medium tracking-tight">วาง Alert เพื่อเริ่มวิเคราะห์</h1>
-        <p class="text-soft mt-2">Local AI อ่านข้อมูลจริงในเครื่อง จากนั้นเลือกสร้างรายงานในเครื่อง หรือส่งฉบับที่ปิดบังแล้วให้ Claude</p>
+        <p class="text-soft mt-2">Local AI อ่านข้อมูลจริงในเครื่อง จากนั้นเลือกสร้างรายงานในเครื่อง หรือส่งฉบับที่ปิดบังแล้วให้ AI ภายนอก</p>
       </section>
 
       <div v-if="alertText" class="flex justify-end">

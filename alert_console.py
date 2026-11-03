@@ -1009,7 +1009,7 @@ class Handler(BaseHTTPRequestHandler):
             return None
         residual = masker.residual(preview)
         if residual:
-            self._json(400, {"error": "ยังพบข้อมูลจริงในช่องตรวจสอบ จึงไม่ส่งให้ Claude: " + ", ".join(residual[:5])})
+            self._json(400, {"error": "ยังพบข้อมูลจริงในช่องตรวจสอบ จึงไม่ส่งให้ AI ภายนอก: " + ", ".join(residual[:5])})
             return None
         return masker, preview
 

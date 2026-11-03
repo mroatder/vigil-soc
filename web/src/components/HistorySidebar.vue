@@ -11,9 +11,10 @@ const props = defineProps({
   more: { type: Boolean, default: false },
   failed: { type: Boolean, default: false },
   loaded: { type: Boolean, default: false },
-  version: { type: String, default: '' }
+  version: { type: String, default: '' },
+  canQuit: { type: Boolean, default: false }
 })
-defineEmits(['update:query', 'select', 'new', 'close', 'retry'])
+defineEmits(['update:query', 'select', 'new', 'close', 'retry', 'quit'])
 
 const SEVERITY = {
   Info: 'var(--info)',
@@ -115,6 +116,9 @@ const groups = computed(() => {
       <p v-if="more" class="px-2.5 py-3 text-[13px] text-soft">แสดง 200 เคสล่าสุด ค้นหาเพื่อดูเคสที่เก่ากว่า</p>
     </nav>
 
-    <p class="px-4 py-2.5 border-t border-line text-[13px] text-soft">เก็บเฉพาะในเครื่องนี้<span class="float-right">v{{ version }}</span></p>
+    <div class="border-t border-line">
+      <button v-if="canQuit" type="button" :disabled="pending.length > 0" :title="pending.length ? 'รอ Local AI ทำงานให้เสร็จก่อน' : undefined" class="w-full min-h-[44px] px-4 text-left text-[15px] text-tint font-normal disabled:opacity-50" @click="$emit('quit')">ปิดโปรแกรม</button>
+      <p class="px-4 py-2.5 text-[13px] text-soft">เก็บเฉพาะในเครื่องนี้<span class="float-right">v{{ version }}</span></p>
+    </div>
   </aside>
 </template>

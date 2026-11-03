@@ -12,6 +12,7 @@ const TOKEN = meta('app-token')
 const HAS_KEY = meta('app-has-key') === 'true'
 const VERSION = meta('app-version')
 const HAS_LOGO = meta('app-has-logo') === 'true'
+const CAN_QUIT = meta('app-can-quit') === 'true'
 
 const stage = ref('alert')
 const draft = ref('')
@@ -41,6 +42,7 @@ const drawerOpen = ref(false)
 const deleteOpen = ref(false)
 const checksDone = ref([])
 const reportPreview = ref(null)
+const closed = ref(false)
 const reportFacts = computed(() => readFacts(alertText.value))
 const issuedAt = ref(new Date())
 const reportIssue = computed(() => ({
@@ -191,6 +193,15 @@ async function deleteCase() {
     newChat()
     say('ลบเคสแล้ว')
     loadCases()
+  } catch (error) {
+    say(error.message)
+  }
+}
+
+async function quitApp() {
+  try {
+    await api('/api/quit', { confirm: true })
+    closed.value = true
   } catch (error) {
     say(error.message)
   }
@@ -372,7 +383,7 @@ onUnmounted(() => {
 <template>
   <div class="min-h-screen flex flex-col lg:pl-[288px] print:hidden">
     <HistorySidebar v-model:query="searchText" :cases="cases" :pending="pending" :active-id="session" :open="drawerOpen" :more="casesMore"
-      :failed="casesFailed" :loaded="casesLoaded" :version="VERSION" @select="openCase" @new="newChat" @close="drawerOpen = false" @retry="loadCases" />
+      :failed="casesFailed" :loaded="casesLoaded" :version="VERSION" :can-quit="CAN_QUIT" @select="openCase" @new="newChat" @close="drawerOpen = false" @retry="loadCases" @quit="quitApp" />
 
     <header :class="['glass sticky top-0 z-20 border-b border-line', session ? '' : 'lg:hidden']">
       <div class="max-w-[820px] mx-auto px-4 h-14 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -460,6 +471,13 @@ onUnmounted(() => {
     </div>
 
     <div v-if="toast" role="status" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 max-w-[90vw] bg-ink text-surface rounded-full px-4 py-2 text-[15px] font-normal shadow-float">{{ toast }}</div>
+
+    <section v-if="closed" class="fixed inset-0 z-50 bg-ground flex items-center justify-center p-6 text-center">
+      <div>
+        <h1 class="text-[28px] font-medium">ปิด Vigil แล้ว</h1>
+        <p class="mt-1">ปิดแท็บนี้ได้เลย เปิดใหม่ได้จาก Start menu</p>
+      </div>
+    </section>
 
     <div v-if="deleteOpen" class="fixed inset-0 z-40 bg-black/40 flex items-end sm:items-center justify-center" @click.self="deleteOpen = false">
       <section role="alertdialog" aria-modal="true" aria-labelledby="delete-title" class="bg-surface w-full sm:max-w-[400px] rounded-t-[24px] sm:rounded-[24px] shadow-sheet p-5 grid gap-2">

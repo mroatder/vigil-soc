@@ -36,7 +36,7 @@ jobs:
         shell: cmd
         run: |
           python -m pip install pyinstaller
-          python -m PyInstaller --noconfirm --onefile --console --name Vigil --icon installer\vigil.ico --add-data "web\dist;web\dist" --add-data "mask_terms.example.txt;." --add-data "environment.example.txt;." alert_console.py
+          python -m PyInstaller --noconfirm --onefile --noconsole --name Vigil --icon installer\vigil.ico --add-data "web\dist;web\dist" --add-data "mask_terms.example.txt;." --add-data "environment.example.txt;." alert_console.py
 
       - name: Start Vigil.exe and check the home page
         shell: pwsh
@@ -47,8 +47,12 @@ jobs:
           $process = Start-Process dist\Vigil.exe -PassThru
           Start-Sleep -Seconds 8
           $page = Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing
-          Stop-Process -Id $process.Id -Force
-          if ($page.Content -notmatch 'Vigil') { throw 'Vigil home page did not load' }
+          if ($page.Content -notmatch 'name="app-can-quit" content="true"') { throw 'Vigil did not start without a console' }
+          $second = Start-Process dist\Vigil.exe -PassThru
+          if (-not $second.WaitForExit(15000)) { throw 'A second start did not hand over to the running app' }
+          $token = [regex]::Match($page.Content, 'name="app-token" content="([^"]+)"').Groups[1].Value
+          Invoke-WebRequest http://127.0.0.1:8765/api/quit -Method Post -UseBasicParsing -ContentType 'application/json' -Headers @{ 'X-App-Token' = $token } -Body '{"confirm":true}' | Out-Null
+          if (-not $process.WaitForExit(15000)) { throw 'Vigil did not quit' }
 
       - name: Build installer
         shell: pwsh

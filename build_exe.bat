@@ -6,7 +6,7 @@ call npm ci || exit /b 1
 call npx vite build || exit /b 1
 popd
 python -m pip install --upgrade pyinstaller || exit /b 1
-python -m PyInstaller --noconfirm --onefile --console --name Vigil --icon installer\vigil.ico ^
+python -m PyInstaller --noconfirm --onefile --noconsole --name Vigil --icon installer\vigil.ico ^
   --add-data "web\dist;web\dist" ^
   --add-data "mask_terms.example.txt;." ^
   --add-data "environment.example.txt;." ^

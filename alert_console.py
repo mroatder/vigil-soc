@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-APP_VERSION = "2.7.0"
+APP_VERSION = "2.7.1"
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("ALERT_CONSOLE_PORT", "8765"))
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
@@ -35,6 +35,8 @@ CLAUDE_URL = "https://api.anthropic.com/v1/messages"
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
 CLAUDE_MAX_TOKENS = int(os.environ.get("CLAUDE_MAX_TOKENS", "4000"))
 FROZEN = bool(getattr(sys, "frozen", False))
+# The installed app has no console, so the page offers the way to quit.
+CAN_QUIT = FROZEN and sys.stdout is None
 # App files ship with the program. Private files live in DATA_DIR and never enter the repository.
 APP_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 LOCAL_DATA = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Vigil"
@@ -911,6 +913,7 @@ class Handler(BaseHTTPRequestHandler):
             .replace("__HAS_KEY__", has_key)
             .replace("__APP_VERSION__", APP_VERSION)
             .replace("__HAS_LOGO__", "true" if company_logo() else "false")
+            .replace("__CAN_QUIT__", "true" if CAN_QUIT else "false")
         )
         self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
 
@@ -967,6 +970,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._handle_prompt(body)
             elif self.path == "/api/restore":
                 self._handle_restore(body)
+            elif self.path == "/api/quit" and CAN_QUIT:
+                self._json(200, {"ok": True})
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
             elif self.path == "/api/history/list":
                 self._json(200, HISTORY.list(str(body.get("query", "")).strip()))
             elif self.path == "/api/history/get":
@@ -1055,21 +1061,45 @@ class ConsoleServer(ThreadingHTTPServer):
     allow_reuse_address = os.name != "nt"
 
 
+def open_browser(url: str) -> None:
+    if not os.environ.get("VIGIL_NO_BROWSER"):
+        webbrowser.open(url)
+
+
+def vigil_is_running(url: str) -> bool:
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(url, timeout=2) as response:
+            return b"<title>Vigil</title>" in response.read()
+    except OSError:
+        return False
+
+
+def show_error(text: str) -> None:
+    print(text)
+    if CAN_QUIT and os.name == "nt":
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(0, text, "Vigil", 0x10)
+
+
 def main() -> None:
     prepare_data_dir()
+    url = f"http://{HOST}:{PORT}/"
     try:
         server = ConsoleServer((HOST, PORT), Handler)
     except OSError:
-        print(f"Port {PORT} is already in use. Close the other Vigil window first.")
+        if vigil_is_running(url):
+            open_browser(url)
+        else:
+            show_error(f"Port {PORT} is in use by another program. Close it, then open Vigil again.")
         return
-    url = f"http://{HOST}:{PORT}/"
     print(f"Vigil v{APP_VERSION}: {url}")
     print(f"Local model: {OLLAMA_MODEL}")
     print(f"Claude model: {CLAUDE_MODEL}")
     print(f"History: {HISTORY_DB}")
     print(f"Data folder: {DATA_DIR}")
-    if not os.environ.get("VIGIL_NO_BROWSER"):
-        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+    threading.Timer(0.5, open_browser, args=(url,)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

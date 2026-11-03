@@ -94,7 +94,8 @@ A GPU is not required by Vigil itself, but it makes the Local AI much faster. De
    ```
 
 2. Download `VigilSetup` from the [latest release](https://github.com/mroatder/vigil-soc/releases/latest) and run it. It needs no administrator rights.
-3. Open Vigil from the Start menu. A console window stays open while the app runs, and the app opens in your browser.
+3. Open Vigil from the Start menu. The app runs in the background and opens in your browser.
+4. To stop it, choose **ปิดโปรแกรม** at the bottom of the left panel. Closing the browser tab leaves it running.
 
 The installer is not code signed, so Windows SmartScreen may show a warning. Choose **More info**, then **Run anyway**, or build from source.
 

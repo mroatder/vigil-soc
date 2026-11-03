@@ -260,6 +260,11 @@ def test_server_flow():
             raise AssertionError("bad token was not blocked")
         except urllib.error.HTTPError as error:
             assert error.code == 403
+        try:
+            call("/api/quit", {"confirm": True})
+            raise AssertionError("quit must be off when the app has a console")
+        except urllib.error.HTTPError as error:
+            assert error.code == 404
         call("/api/history/delete", {"id": preview["session"]})
         try:
             call("/api/history/get", {"id": preview["session"]})

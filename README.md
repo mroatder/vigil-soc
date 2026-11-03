@@ -56,9 +56,43 @@ Only the masked text can leave your computer, and only when you copy it. There i
 
 See a full [sample PDF report](docs/sample-report-th.pdf).
 
+## What you need
+
+### To use Vigil
+
+| Tool | Required | Used for |
+|---|---|---|
+| Windows 10 or 11, 64-bit | Yes | Running the installer |
+| [Ollama](https://ollama.com) | Yes | Running the Local AI on your computer |
+| An Ollama model | Yes | Analyzing alerts. Create `log-analyst-q35` from [Modelfile.example](Modelfile.example) |
+| A modern web browser | Yes | Showing the app and saving reports as PDF |
+| [Wazuh](https://wazuh.com) | Recommended | Supplying alert JSON. Other log text can also be pasted |
+| A Claude account | Optional | The second opinion, through copy and paste |
+| Anthropic API key | Optional | Sending masked text directly from the app |
+
+A GPU is not required by Vigil itself, but it makes the Local AI much faster. Development used an NVIDIA RTX 3050 with 6 GB of memory and `qwen3.5:4b`, and larger alerts can take a minute or more.
+
+### To build from source
+
+| Tool | Version | Used for |
+|---|---|---|
+| [Git](https://git-scm.com) | Any recent version | Getting the code |
+| [Python](https://www.python.org) | 3.12 | Running the app. No Python packages are needed |
+| [Node.js](https://nodejs.org) and npm | 20 | Building the web interface |
+| [PyInstaller](https://pyinstaller.org) | Latest | Building `Vigil.exe` |
+| [Inno Setup](https://jrsoftware.org/isinfo.php) | 6 | Building the installer |
+
+`npm ci` installs the web tools for you: Vue 3, Vite, Tailwind CSS, and the Kanit font.
+
 ## Install on Windows
 
-1. Install [Ollama](https://ollama.com) and create a model from [Modelfile.example](Modelfile.example).
+1. Install [Ollama](https://ollama.com), then create the model:
+
+   ```bat
+   ollama pull qwen3.5:4b
+   ollama create log-analyst-q35 -f Modelfile.example
+   ```
+
 2. Download `VigilSetup` from the [latest release](https://github.com/mroatder/vigil-soc/releases/latest) and run it. It needs no administrator rights.
 3. Open Vigil from the Start menu. A console window stays open while the app runs, and the app opens in your browser.
 
@@ -85,8 +119,6 @@ Uninstalling leaves this folder in place, so delete it yourself to remove your d
 | `VIGIL_DATA_DIR` | `%LOCALAPPDATA%\Vigil` for the installed app |
 
 ## Run from source
-
-Needs Python 3.12 and Node.js 20. Python uses only the standard library.
 
 ```bash
 cd web

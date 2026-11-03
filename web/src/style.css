@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ground: #262624;
+  --side: #1f1e1d;
+  --surface: #30302e;
+  --raised: #3d3d3a;
+  --ink: #ffffff;
+  --soft: #ffffff;
+  --hint: rgba(255, 255, 255, .6);
+  --line: rgba(222, 220, 209, .15);
+  --tint: #ff7a3d;
+  --tint-soft: rgba(255, 122, 61, .22);
+  --fill: #cf440e;
+  --info: #4da3ff;
+  --ok: #30d158;
+  --ok-soft: rgba(48, 209, 88, .22);
+  --bad: #ff655c;
+  --bad-soft: rgba(255, 81, 71, .22);
+  --warn: #ffd60a;
+  --warn-soft: rgba(255, 214, 10, .20);
+  color-scheme: dark;
+}
+
+html, body, #app { min-height: 100%; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: Kanit, system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 300;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { text-wrap: balance; }
+
+:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; }
+
+.glass {
+  background: color-mix(in srgb, var(--ground) 76%, transparent);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+
+@media print {
+  @page { size: A4; margin: 18mm; }
+  html, body { background: #ffffff; color: #1c1c1e; font-size: 12pt; }
+}

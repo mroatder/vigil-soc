@@ -1,0 +1,5 @@
+- A firewall with WAF and IPS sends syslog to Wazuh. Zabbix monitors availability.
+- Wazuh agents run on the servers.
+- [LEGACY_SERVER_*] runs an old operating system and is the highest-risk host.
+- Placeholder names describe the role of a host, such as [DOMAIN_CONTROLLER_*].
+- Do not assume a product is installed on a host unless the alert proves it.

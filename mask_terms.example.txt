@@ -1,0 +1,9 @@
+# Copy to mask_terms.txt, then list names that must never leave this computer.
+# Format: value|ROLE
+# The role becomes the placeholder, such as [DOMAIN_CONTROLLER_1].
+# IP addresses, email addresses, and common secret fields are masked automatically.
+DC01|DOMAIN_CONTROLLER
+LEGACY-01|LEGACY_SERVER
+ERP-DB01|ERP_DATABASE
+FW-EDGE-01|FIREWALL
+example.local|COMPANY_DOMAIN

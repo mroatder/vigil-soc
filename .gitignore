@@ -1,0 +1,18 @@
+# Private data. Never commit these.
+mask_terms.txt
+environment.txt
+company-logo.*
+history.db
+history.db-*
+Modelfile
+Modelfile-*
+!Modelfile.example
+
+# Build output
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+web/node_modules/
+web/dist/

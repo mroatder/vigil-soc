@@ -1,0 +1,80 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build web interface
+        working-directory: web
+        run: |
+          npm ci
+          npx vite build
+
+      - name: Run tests
+        run: |
+          python test_alert_console.py
+          node web/tests/facts.test.mjs
+
+      - name: Build Vigil.exe
+        shell: cmd
+        run: |
+          python -m pip install pyinstaller
+          python -m PyInstaller --noconfirm --onefile --console --name Vigil --icon installer\vigil.ico --add-data "web\dist;web\dist" --add-data "mask_terms.example.txt;." --add-data "environment.example.txt;." alert_console.py
+
+      - name: Start Vigil.exe and check the home page
+        shell: pwsh
+        env:
+          VIGIL_NO_BROWSER: "1"
+          VIGIL_DATA_DIR: ${{ runner.temp }}\vigil-smoke
+        run: |
+          $process = Start-Process dist\Vigil.exe -PassThru
+          Start-Sleep -Seconds 8
+          $page = Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing
+          Stop-Process -Id $process.Id -Force
+          if ($page.Content -notmatch 'Vigil') { throw 'Vigil home page did not load' }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path alert_console.py -Pattern 'APP_VERSION = "(.+)"').Matches[0].Groups[1].Value
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" installer\vigil.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vigil-windows
+          path: dist/VigilSetup-*.exe
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v$env:VERSION"
+          $setup = (Get-ChildItem dist\VigilSetup-*.exe).FullName
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $setup --clobber
+          } else {
+            gh release create $tag $setup --title "Vigil $env:VERSION" --notes "Windows installer for Vigil $env:VERSION. The installer is not code signed, so Windows SmartScreen may show a warning."
+          }
+          exit 0

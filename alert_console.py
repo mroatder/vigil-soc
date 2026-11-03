@@ -968,6 +968,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._handle_claude(body)
             elif self.path == "/api/prompt":
                 self._handle_prompt(body)
+            elif self.path == "/api/prompt-file":
+                self._handle_prompt_file(body)
             elif self.path == "/api/restore":
                 self._handle_restore(body)
             elif self.path == "/api/quit" and CAN_QUIT:
@@ -1028,6 +1030,36 @@ class Handler(BaseHTTPRequestHandler):
             return
         keep(HISTORY.save_preview, str(body.get("session", "")), checked[1])
         self._json(200, {"prompt": f"{claude_system()}\n\n{checked[1]}"})
+
+    def _handle_prompt_file(self, body: dict) -> None:
+        checked = self._checked_preview(body)
+        if checked is None:
+            return
+        _masker, preview = checked
+        keep(HISTORY.save_preview, str(body.get("session", "")), preview)
+        system_prompt = claude_system()
+        content = (
+            "# Vigil SOC — AI Analysis Request\n\n"
+            "> Copy this entire file and paste it into any AI chat (ChatGPT, Gemini, Claude, etc.)\n"
+            "> The AI **must** follow the output format instructions in the System Prompt section.\n\n"
+            "---\n\n"
+            "## System Prompt\n\n"
+            "Paste the block below as the **System** / **Custom Instructions** field in the AI you are using,\n"
+            "or paste it at the very beginning of the conversation before the alert.\n\n"
+            "````\n"
+            + system_prompt + "\n"
+            "````\n\n"
+            "---\n\n"
+            "## Alert (Masked)\n\n"
+            "Paste the block below as your message to the AI:\n\n"
+            "````\n"
+            + preview + "\n"
+            "````\n"
+        )
+        session_id = str(body.get("session", "alert"))
+        safe_id = re.sub(r"[^A-Za-z0-9]", "", session_id)[:8].upper() or "ALERT"
+        filename = f"vigil-prompt-{safe_id}.md"
+        self._json(200, {"content": content, "filename": filename})
 
     def _handle_restore(self, body: dict) -> None:
         case_id = str(body.get("session", ""))

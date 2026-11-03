@@ -60,7 +60,7 @@ let searchTimer = 0
 const placeholder = computed(() => ({
   alert: 'วาง JSON จาก Wazuh หรือ Log',
   working: 'Local AI กำลังวิเคราะห์',
-  reply: 'วางคำตอบจาก Claude',
+  reply: 'วางคำตอบจาก AI ภายนอก',
   report: 'วาง Alert ถัดไป'
 }[stage.value]))
 function titleOf(text) {
@@ -318,8 +318,24 @@ function submit() {
 async function copyPrompt() {
   try {
     const data = await api('/api/prompt', { session: session.value, preview: preview.value })
-    await copyText(data.prompt, 'คัดลอกแล้ว นำไปวางในแชต Claude')
+    await copyText(data.prompt, 'คัดลอกแล้ว นำไปวางใน AI ที่ต้องการ')
     composer.value?.focus()
+  } catch (error) {
+    say(error.message)
+  }
+}
+
+async function downloadPromptFile() {
+  try {
+    const data = await api('/api/prompt-file', { session: session.value, preview: preview.value })
+    const blob = new Blob([data.content], { type: 'text/markdown; charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = data.filename
+    a.click()
+    URL.revokeObjectURL(url)
+    say('ดาวน์โหลดไฟล์แล้ว')
   } catch (error) {
     say(error.message)
   }
@@ -327,7 +343,7 @@ async function copyPrompt() {
 
 async function sendApi() {
   try {
-    say('Claude กำลังวิเคราะห์')
+    say('AI กำลังวิเคราะห์')
     const data = await api('/api/claude', { session: session.value, preview: preview.value })
     warnIfNotSaved(data)
     showReport(data.answer)
@@ -421,11 +437,11 @@ onUnmounted(() => {
 
       <section v-if="preview && !report" class="bg-surface rounded-2xl p-4 grid gap-3 min-w-0">
         <div class="flex items-baseline justify-between gap-3">
-          <h2 class="text-[19px] font-medium">ข้อความสำหรับ Claude</h2>
+          <h2 class="text-[19px] font-medium">ข้อความสำหรับ AI ภายนอก</h2>
           <span class="text-[14px] text-soft whitespace-nowrap">ปิดบังแล้ว {{ maskedCount }} ค่า</span>
         </div>
-        <textarea v-if="editing" v-model="preview" spellcheck="false" aria-label="แก้ข้อความสำหรับ Claude" class="w-full h-72 bg-raised rounded-xl p-3 font-mono text-[13.5px] leading-6"></textarea>
-        <div v-else tabindex="0" aria-label="ข้อความสำหรับ Claude" class="max-h-72 overflow-auto font-mono text-[13.5px] leading-7 whitespace-pre-wrap break-words">
+        <textarea v-if="editing" v-model="preview" spellcheck="false" aria-label="แก้ข้อความสำหรับ AI ภายนอก" class="w-full h-72 bg-raised rounded-xl p-3 font-mono text-[13.5px] leading-6"></textarea>
+        <div v-else tabindex="0" aria-label="ข้อความสำหรับ AI ภายนอก" class="max-h-72 overflow-auto font-mono text-[13.5px] leading-7 whitespace-pre-wrap break-words">
           <template v-for="(part, index) in maskedParts" :key="index">
             <mark v-if="index % 2" class="bg-ink text-surface rounded px-1.5 py-0.5 text-[12px] whitespace-nowrap">{{ part }}</mark>
             <template v-else>{{ part }}</template>
@@ -437,6 +453,7 @@ onUnmounted(() => {
         <p v-if="localBusy" class="text-soft" role="status">Local AI กำลังสร้างรายงาน อาจใช้เวลาประมาณ 1-2 นาที</p>
         <div class="flex flex-wrap items-center gap-3">
           <button type="button" class="min-h-[44px] px-5 rounded-full bg-fill text-white font-normal" @click="copyPrompt">คัดลอกข้อความ</button>
+          <button type="button" class="min-h-[44px] px-5 rounded-full bg-fill text-white font-normal" @click="downloadPromptFile">ดาวน์โหลด .md</button>
           <button type="button" :disabled="localBusy" class="min-h-[44px] px-5 rounded-full bg-tint-soft text-tint font-normal disabled:opacity-50" @click="makeLocalReport">สร้างรายงานด้วย Local AI</button>
           <button v-if="answerText" type="button" class="min-h-[44px] px-2 text-tint font-normal" @click="backToReport">กลับไปที่รายงาน</button>
           <button type="button" class="min-h-[44px] px-2 text-tint font-normal" @click="editing = !editing">{{ editing ? 'ดูส่วนที่ปิดบัง' : 'แก้ข้อความ' }}</button>
@@ -453,7 +470,7 @@ onUnmounted(() => {
           <p class="px-4 pb-5 whitespace-pre-wrap break-words">{{ localAnswer }}</p>
         </details>
         <details v-if="preview" class="bg-surface rounded-2xl min-w-0">
-          <summary class="min-h-[52px] flex items-center px-4 cursor-pointer font-normal">ข้อความที่ปิดบังแล้วสำหรับ Claude</summary>
+          <summary class="min-h-[52px] flex items-center px-4 cursor-pointer font-normal">ข้อความที่ปิดบังแล้วสำหรับ AI ภายนอก</summary>
           <pre class="px-4 pb-5 font-mono text-[13.5px] leading-7 whitespace-pre-wrap break-words">{{ preview }}</pre>
         </details>
       </div>

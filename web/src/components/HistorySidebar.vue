@@ -98,7 +98,7 @@ const groups = computed(() => {
                   <span>{{ item.severity }}</span>
                 </template>
                 <span v-else-if="item.answered">มีรายงานแล้ว</span>
-                <span v-else>รอคำตอบ Claude</span>
+                <span v-else>รอคำตอบ AI</span>
                 <span class="ml-auto whitespace-nowrap">{{ item.time }}</span>
               </span>
             </button>

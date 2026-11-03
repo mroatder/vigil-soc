@@ -29,8 +29,8 @@ const jump = index => {
       <h2 class="text-[26px] sm:text-[32px] leading-[1.3] font-medium tracking-tight">{{ report.summary?.verdict || 'รายงานการวิเคราะห์' }}</h2>
       <p v-if="report.summary?.event_time" class="text-[15px] text-soft">{{ report.summary.event_time }} น.</p>
       <p v-if="report.summary?.source === 'local'" class="text-[15px] text-soft">
-        สร้างโดย Local AI ในเครื่องนี้ ยังไม่ผ่านการตรวจโดย Claude
-        <button type="button" class="min-h-[36px] text-tint font-normal" @click="$emit('claude')">ส่งให้ Claude ตรวจต่อ</button>
+        สร้างโดย Local AI ในเครื่องนี้ ยังไม่ผ่านการตรวจโดย AI ภายนอก
+        <button type="button" class="min-h-[36px] text-tint font-normal" @click="$emit('claude')">ส่งให้ AI ภายนอกตรวจต่อ</button>
       </p>
     </header>
 

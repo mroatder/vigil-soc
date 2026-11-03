@@ -15,7 +15,7 @@
 
 Reading alerts takes time, and a small IT team rarely has a SOC analyst on call. Cloud AI is strong at explaining logs, but real IP addresses and host names should not leave the network.
 
-Vigil keeps the real data on your computer. A Local AI reads it first. You can stop there, or send a masked copy to Claude for a deeper second opinion. The answer comes back with the real values restored on your machine.
+Vigil keeps the real data on your computer. A Local AI reads it first. You can stop there, or send a masked copy to any external AI (Claude, ChatGPT, Gemini, or others) for a deeper second opinion. The answer comes back with the real values restored on your machine.
 
 ## What it does
 
@@ -35,14 +35,14 @@ flowchart LR
     C --> D{Next step}
     D -->|Stay local| E[Report from Local AI]
     D -->|Second opinion| F[Masked text]
-    F -->|You copy it| G[Claude]
-    G -->|You paste the answer| H[Restore real values locally]
+    F -->|Copy prompt or download .md| G[Any external AI]
+    G -->|Paste the answer back| H[Restore real values locally]
     H --> I[Full report]
     E --> J[Thai or English PDF]
     I --> J
 ```
 
-Only the masked text can leave your computer, and only when you copy it. There is also an optional API mode if `ANTHROPIC_API_KEY` is set.
+Only the masked text can leave your computer, and only when you copy or download it. You can paste it into any AI (Claude, ChatGPT, Gemini, or others), then paste the answer back to restore the real values. There is also an optional direct API mode if `ANTHROPIC_API_KEY` is set.
 
 ## Screens
 
@@ -67,7 +67,7 @@ See a full [sample PDF report](docs/sample-report-th.pdf).
 | An Ollama model | Yes | Analyzing alerts. Create `log-analyst-q35` from [Modelfile.example](Modelfile.example) |
 | A modern web browser | Yes | Showing the app and saving reports as PDF |
 | [Wazuh](https://wazuh.com) | Recommended | Supplying alert JSON. Other log text can also be pasted |
-| A Claude account | Optional | The second opinion, through copy and paste |
+| An external AI account | Optional | The second opinion (Claude, ChatGPT, Gemini, or others), through copy-and-paste or the downloaded .md file |
 | Anthropic API key | Optional | Sending masked text directly from the app |
 
 A GPU is not required by Vigil itself, but it makes the Local AI much faster. Development used an NVIDIA RTX 3050 with 6 GB of memory and `qwen3.5:4b`, and larger alerts can take a minute or more.
@@ -106,7 +106,7 @@ Private files live in `%LOCALAPPDATA%\Vigil` and are never part of this reposito
 | File | Purpose |
 |---|---|
 | `mask_terms.txt` | Host and company names to mask, one `value\|ROLE` per line |
-| `environment.txt` | What Claude should know about your network, using placeholders only |
+| `environment.txt` | What the external AI should know about your network, using placeholders only |
 | `company-logo.png` | Optional logo for the top left of exported reports |
 | `history.db` | Case history. It holds real alert data in plain text, so keep it private |
 
@@ -148,13 +148,13 @@ Run `build_exe.bat` to build `dist\Vigil.exe`. GitHub Actions tests each push on
 ## Limits
 
 - Masking reduces risk but cannot catch everything. Review the masked text before you copy it, and list your own host names in `mask_terms.txt`.
-- AI output can be wrong. Check high-severity cases yourself. Local AI reports state that Claude has not reviewed them.
+- AI output can be wrong. Check high-severity cases yourself. Local AI reports state that no external AI has reviewed them.
 - A blocked request proves only what the device logged. Confirming that a host is safe still needs its own logs.
 - Vigil explains alerts you give it. It is not a SIEM, and it does not detect events or change firewall rules.
 
 ## ภาษาไทย
 
-Vigil คือเครื่องมือวิเคราะห์ Alert จาก Wazuh ที่ทำงานในเครื่องของคุณ Local AI อ่านข้อมูลจริงก่อน แล้วเลือกได้ว่าจะสร้างรายงานในเครื่อง หรือส่งฉบับที่ปิดบัง IP และ Hostname แล้วให้ Claude วิเคราะห์ต่อ จากนั้นแปลงกลับเป็นข้อมูลจริงในเครื่อง และส่งออกรายงาน PDF ไทยหรืออังกฤษสำหรับผู้บริหารได้
+Vigil คือเครื่องมือวิเคราะห์ Alert จาก Wazuh ที่ทำงานในเครื่องของคุณ Local AI อ่านข้อมูลจริงก่อน แล้วเลือกได้ว่าจะสร้างรายงานในเครื่อง หรือส่งฉบับที่ปิดบัง IP และ Hostname แล้วให้ AI ภายนอก (Claude, ChatGPT, Gemini หรือตัวอื่น) วิเคราะห์ต่อ โดยคัดลอกข้อความหรือดาวน์โหลดเป็นไฟล์ .md แล้วนำคำตอบมาวางกลับในแอป จากนั้นแปลงกลับเป็นข้อมูลจริงในเครื่อง และส่งออกรายงาน PDF ไทยหรืออังกฤษสำหรับผู้บริหารได้
 
 ดาวน์โหลดตัวติดตั้งได้จากหน้า [Releases](https://github.com/mroatder/vigil-soc/releases/latest)
 

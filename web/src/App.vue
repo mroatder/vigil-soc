@@ -11,7 +11,9 @@ const meta = name => document.querySelector(`meta[name="${name}"]`)?.content || 
 const TOKEN = meta('app-token')
 const HAS_KEY = meta('app-has-key') === 'true'
 const VERSION = meta('app-version')
-const HAS_LOGO = meta('app-has-logo') === 'true'
+const hasLogo = ref(meta('app-has-logo') === 'true')
+const logoUrl = ref(hasLogo.value ? '/company-logo' : '')
+const logoInput = ref(null)
 const CAN_QUIT = meta('app-can-quit') === 'true'
 
 const stage = ref('alert')
@@ -49,7 +51,7 @@ const reportIssue = computed(() => ({
   id: session.value ? `VG-${session.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase()}` : '',
   at: issuedAt.value,
   version: VERSION,
-  logo: HAS_LOGO ? '/company-logo' : ''
+  logo: hasLogo.value ? logoUrl.value : ''
 }))
 const localBusy = computed(() => pending.value.some(job => job.case === session.value && session.value))
 let toastTimer = 0
@@ -315,6 +317,39 @@ function submit() {
   else sendAlert(text)
 }
 
+async function onLogoSelected(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  if (file.size > 2 * 1024 * 1024) {
+    say('ขนาดไฟล์โลโก้ต้องไม่เกิน 2 MB')
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = async () => {
+    try {
+      const res = await api('/api/logo/upload', { data: reader.result })
+      hasLogo.value = true
+      logoUrl.value = res.logo_url || `/company-logo?t=${Date.now()}`
+      say('อัปโหลดโลโก้สำเร็จ')
+    } catch (err) {
+      say(err.message)
+    }
+  }
+  reader.readAsDataURL(file)
+}
+
+async function removeLogo() {
+  try {
+    await api('/api/logo/delete', {})
+    hasLogo.value = false
+    logoUrl.value = ''
+    if (logoInput.value) logoInput.value.value = ''
+    say('ลบโลโก้แล้ว')
+  } catch (err) {
+    say(err.message)
+  }
+}
+
 async function copyPrompt() {
   try {
     const data = await api('/api/prompt', { session: session.value, preview: preview.value })
@@ -528,9 +563,22 @@ onUnmounted(() => {
           <button v-for="option in [['th', 'ไทย'], ['en', 'English']]" :key="option[0]" type="button" :aria-pressed="exportLang === option[0]"
             :class="['min-h-[36px] rounded-lg font-normal', exportLang === option[0] ? 'bg-surface shadow-sm' : 'text-soft']" @click="exportLang = option[0]">{{ option[1] }}</button>
         </div>
-        <label class="grid gap-1 text-[15px] text-soft">ผู้จัดทำ
-          <input v-model="author" type="text" autocomplete="name" class="bg-surface text-ink rounded-xl px-3 min-h-[44px]">
-        </label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label class="grid gap-1 text-[15px] text-soft">ผู้จัดทำ
+            <input v-model="author" type="text" autocomplete="name" placeholder="ชื่อผู้จัดทำรายงาน" class="bg-surface text-ink rounded-xl px-3 min-h-[44px]">
+          </label>
+          <div class="grid gap-1 text-[15px] text-soft">โลโก้บริษัท
+            <div class="flex items-center gap-2 min-h-[44px]">
+              <input ref="logoInput" type="file" accept="image/png,image/jpeg,image/svg+xml" class="hidden" @change="onLogoSelected">
+              <button type="button" class="min-h-[40px] px-3.5 rounded-xl bg-surface border border-line text-ink font-normal text-[14px] flex items-center gap-1.5" @click="logoInput?.click()">
+                <svg class="w-4 h-4 text-tint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                {{ hasLogo ? 'เปลี่ยนโลโก้' : 'เพิ่มโลโก้' }}
+              </button>
+              <button v-if="hasLogo" type="button" class="min-h-[40px] px-2.5 text-soft hover:text-bad font-normal text-[13px]" @click="removeLogo">ลบ</button>
+              <span v-if="hasLogo" class="text-[13px] text-soft truncate">มีโลโก้แล้ว</span>
+            </div>
+          </div>
+        </div>
         <div ref="reportPreview" class="bg-white rounded-xl p-6 shadow-sm"><ReportDocument :report="report" :lang="exportLang" :author="author" :facts="reportFacts" :issue="reportIssue" /></div>
         <div class="flex flex-wrap gap-3">
           <button type="button" class="min-h-[44px] px-5 rounded-full bg-fill text-white font-normal" @click="printReport">บันทึกเป็น PDF</button>

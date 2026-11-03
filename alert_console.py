@@ -995,6 +995,10 @@ class Handler(BaseHTTPRequestHandler):
                 HISTORY.delete(case_id)
                 SESSIONS.remove(case_id)
                 self._json(200, {"ok": True})
+            elif self.path == "/api/logo/upload":
+                self._handle_logo_upload(body)
+            elif self.path == "/api/logo/delete":
+                self._handle_logo_delete()
             else:
                 self._json(404, {"error": "ไม่พบ API"})
         except urllib.error.HTTPError as error:
@@ -1095,6 +1099,41 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": "ไม่พบเคสนี้ อาจถูกลบไปแล้ว"})
             return
         self._json(200, {"case": case})
+
+    def _handle_logo_upload(self, body: dict) -> None:
+        import base64
+        data_uri = str(body.get("data", ""))
+        match = re.match(r"^data:image/(png|jpeg|svg\+xml);base64,(.+)$", data_uri)
+        if not match:
+            self._json(400, {"error": "รูปภาพต้องเป็นไฟล์ PNG, JPG หรือ SVG"})
+            return
+        ext_map = {"png": ".png", "jpeg": ".jpg", "svg+xml": ".svg"}
+        ext = ext_map[match.group(1)]
+        raw_bytes = base64.b64decode(match.group(2))
+        if len(raw_bytes) > 2 * 1024 * 1024:
+            self._json(400, {"error": "ขนาดไฟล์โลโก้ต้องไม่เกิน 2 MB"})
+            return
+        # Delete old logo files first
+        for name in LOGO_NAMES:
+            old_f = DATA_DIR / name
+            if old_f.is_file():
+                try:
+                    old_f.unlink()
+                except OSError:
+                    pass
+        new_file = DATA_DIR / f"company-logo{ext}"
+        new_file.write_bytes(raw_bytes)
+        self._json(200, {"ok": True, "has_logo": True, "logo_url": f"/company-logo?t={int(datetime.now().timestamp())}"})
+
+    def _handle_logo_delete(self) -> None:
+        for name in LOGO_NAMES:
+            old_f = DATA_DIR / name
+            if old_f.is_file():
+                try:
+                    old_f.unlink()
+                except OSError:
+                    pass
+        self._json(200, {"ok": True, "has_logo": False})
 
 
 class ConsoleServer(ThreadingHTTPServer):

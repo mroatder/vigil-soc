@@ -110,6 +110,8 @@ Private files live in `%LOCALAPPDATA%\Vigil` and are never part of this reposito
 | `environment.txt` | What the external AI should know about your network, using placeholders only |
 | `company-logo.png` | Optional logo for the top left of exported reports |
 | `history.db` | Case history. It holds real alert data in plain text, so keep it private |
+| `lan_ip.txt` | Optional. This computer's private IPv4 address, which opens Vigil to the local network |
+| `lan_password.txt` | Password for other computers. Vigil creates a random one on first use |
 
 Uninstalling leaves this folder in place, so delete it yourself to remove your data.
 
@@ -119,6 +121,7 @@ Uninstalling leaves this folder in place, so delete it yourself to remove your d
 | `OLLAMA_URL` | `http://127.0.0.1:11434/api/chat` |
 | `ALERT_CONSOLE_PORT` | `8765` |
 | `VIGIL_DATA_DIR` | `%LOCALAPPDATA%\Vigil` for the installed app |
+| `VIGIL_LAN_IP` | Empty. Used in place of `lan_ip.txt` |
 
 ## Run from source
 
@@ -142,7 +145,8 @@ Run `build_exe.bat` to build `dist\Vigil.exe`. GitHub Actions tests each push on
 
 ## Security design
 
-- Binds to `127.0.0.1` only, checks the `Host` header, and requires a per-run token for every API call.
+- Binds to `127.0.0.1` by default, checks the `Host` header, and requires a per-run token for every API call.
+- Network access is off until `lan_ip.txt` is set. Other computers must then sign in with the shared password. Sign-in lasts 12 hours, and an address is locked for 5 minutes after 5 wrong passwords.
 - Sets a strict Content Security Policy, loads no external scripts or fonts, and renders alert text as text, never as HTML.
 - Treats alert content as untrusted data in every AI prompt.
 - Overwrites deleted cases in the database with SQLite `secure_delete`.
@@ -152,6 +156,7 @@ Run `build_exe.bat` to build `dist\Vigil.exe`. GitHub Actions tests each push on
 - Masking reduces risk but cannot catch everything. Review the masked text before you copy it, and list your own host names in `mask_terms.txt`.
 - AI output can be wrong. Check high-severity cases yourself. Local AI reports state that no external AI has reviewed them.
 - A blocked request proves only what the device logged. Confirming that a host is safe still needs its own logs.
+- Network access uses plain HTTP, so the password and alert data are not encrypted. Everyone who signs in shares one case history and can change or delete cases. Check your company policy first.
 - Vigil explains alerts you give it. It is not a SIEM, and it does not detect events or change firewall rules.
 
 ## ภาษาไทย

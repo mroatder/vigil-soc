@@ -16,17 +16,19 @@ import shutil
 import sqlite3
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 import webbrowser
 from collections import OrderedDict
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
-APP_VERSION = "2.9.0"
+APP_VERSION = "2.9.1"
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("ALERT_CONSOLE_PORT", "8765"))
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
@@ -43,12 +45,25 @@ LOCAL_DATA = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Vigil"
 DATA_DIR = Path(os.environ.get("VIGIL_DATA_DIR") or (LOCAL_DATA if FROZEN else APP_DIR))
 TERMS_FILE = DATA_DIR / "mask_terms.txt"
 ENVIRONMENT_FILE = DATA_DIR / "environment.txt"
+LAN_IP_FILE = DATA_DIR / "lan_ip.txt"
+LAN_PASSWORD_FILE = DATA_DIR / "lan_password.txt"
 LOGO_NAMES = ("company-logo.png", "company-logo.svg", "company-logo.jpg")
 WEB_DIST = APP_DIR / "web" / "dist"
 HISTORY_DB = Path(os.environ.get("ALERT_CONSOLE_DB") or DATA_DIR / "history.db")
 HISTORY_LIMIT = 200
 MAX_BODY = 2 * 1024 * 1024
 APP_TOKEN = secrets.token_urlsafe(24)
+LAN_IP = ""  # This computer's own LAN address.
+LAN_PASSWORD = ""  # Other computers are refused while this is empty.
+LOGIN_COOKIE = "vigil_session"
+LOGIN_HOURS = 12
+LOGIN_TRIES = 5
+LOGIN_LOCK_SECONDS = 300
+MIN_PASSWORD = 12
+LOGINS: dict[str, float] = {}
+SERVERS: list = []
+LOGIN_FAILURES: dict[str, tuple[int, float]] = {}
+LOGIN_LOCK = threading.Lock()
 
 REPORT_BLOCK = """title: one short title
 summary: an executive summary in 4-6 sentences covering what happened, where it came from, what was targeted, whether the defense blocked it, whether impact is confirmed, and what happens next
@@ -278,6 +293,11 @@ SERVER_TEXT = {
     "case_deleted": ("ไม่พบเคสนี้ อาจถูกลบไปแล้ว", "Case not found. It may have been deleted."),
     "bad_logo_type": ("รูปภาพต้องเป็นไฟล์ PNG, JPG หรือ SVG", "The image must be a PNG, JPG, or SVG file"),
     "logo_too_large": ("ขนาดไฟล์โลโก้ต้องไม่เกิน 2 MB", "The logo file must be 2 MB or smaller"),
+    "login_prompt": ("ใส่รหัสผ่านเพื่อเข้าใช้งาน", "Enter the password to continue"),
+    "login_locked": ("ลองผิดหลายครั้ง กรุณารอ 5 นาที", "Too many wrong passwords. Wait 5 minutes."),
+    "login_wrong": ("รหัสผ่านไม่ถูกต้อง", "The password is incorrect"),
+    "login_password": ("รหัสผ่าน", "Password"),
+    "login_button": ("เข้าสู่ระบบ", "Sign in"),
 }
 
 FALLBACK_TEXT = {
@@ -401,6 +421,82 @@ def prompt_for(prompt: str, lang: str) -> str:
 
 def claude_system(lang: str = "th") -> str:
     return prompt_for(SYSTEM_CLAUDE, lang).replace("{{ENVIRONMENT}}", load_environment())
+
+
+def read_lan_ip() -> str:
+    """Return this computer's LAN address from VIGIL_LAN_IP or lan_ip.txt, if set."""
+    value = os.environ.get("VIGIL_LAN_IP", "").strip()
+    if not value and LAN_IP_FILE.is_file():
+        value = LAN_IP_FILE.read_text(encoding="utf-8-sig").strip()
+    if not value:
+        return ""
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        print(f"Ignored LAN address {value!r}: not an IP address.")
+        return ""
+    if address.version != 4 or address.is_loopback or address.is_unspecified or not address.is_private:
+        print(f"Ignored LAN address {value}: use this computer's private IPv4 address.")
+        return ""
+    return str(address)
+
+
+def read_lan_password() -> str:
+    """Return the shared password, creating a random one on first use."""
+    if not LAN_PASSWORD_FILE.is_file():
+        LAN_PASSWORD_FILE.write_text(secrets.token_urlsafe(15) + "\n", encoding="utf-8")
+    value = LAN_PASSWORD_FILE.read_text(encoding="utf-8-sig").strip()
+    if len(value) < MIN_PASSWORD:
+        print(f"Other computers stay refused: the password needs {MIN_PASSWORD} or more characters.")
+        return ""
+    return value
+
+
+def is_private_ipv4(value: str) -> bool:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return address.version == 4 and address.is_private
+
+
+def login_locked(client: str, now: float) -> bool:
+    with LOGIN_LOCK:
+        return LOGIN_FAILURES.get(client, (0, 0.0))[1] > now
+
+
+def try_login(client: str, password: str, now: float) -> str:
+    """Return a new login token, or an empty string when the password is wrong."""
+    good = bool(LAN_PASSWORD) and secrets.compare_digest(password.encode("utf-8"), LAN_PASSWORD.encode("utf-8"))
+    with LOGIN_LOCK:
+        if good:
+            LOGIN_FAILURES.pop(client, None)
+            for token, expires in list(LOGINS.items()):
+                if expires <= now:
+                    del LOGINS[token]
+            token = secrets.token_urlsafe(32)
+            LOGINS[token] = now + LOGIN_HOURS * 3600
+            return token
+        count = LOGIN_FAILURES.get(client, (0, 0.0))[0] + 1
+        LOGIN_FAILURES[client] = (0, now + LOGIN_LOCK_SECONDS) if count >= LOGIN_TRIES else (count, 0.0)
+    return ""
+
+
+def login_valid(token: str, now: float) -> bool:
+    with LOGIN_LOCK:
+        return LOGINS.get(token, 0.0) > now
+
+
+LOGIN_PAGE = """<!doctype html><html lang="__LANG__"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Vigil</title><style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f7fb;color:#17304f;font-family:Tahoma,sans-serif}
+form{width:min(340px,calc(100vw - 32px));background:#fff;border:1px solid #cfe0f3;border-radius:12px;padding:28px;box-sizing:border-box}
+h1{margin:0 0 6px;font-size:24px}p{margin:0 0 18px;color:#46607c;font-size:15px}
+input,button{width:100%;box-sizing:border-box;padding:11px;border-radius:8px;font-size:16px}
+input{border:1px solid #9db8d6;margin-bottom:12px}button{border:0;background:#1558b0;color:#fff;cursor:pointer}
+.error{color:#b42318}</style></head><body><form method="post" action="/login"><h1>Vigil</h1>__MESSAGE__
+<input type="password" name="password" aria-label="__PASSWORD__" autocomplete="current-password" autofocus required>
+<button type="submit">__SIGN_IN__</button></form></body></html>"""
 
 
 def prepare_data_dir() -> None:
@@ -971,6 +1067,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _send(self, status: int, body: bytes, content_type: str, cache: str = "no-store") -> None:
         self.send_response(status)
+        for name, value in getattr(self, "_extra_headers", ()):
+            self.send_header(name, value)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -994,12 +1092,61 @@ class Handler(BaseHTTPRequestHandler):
         self._json(status, {"error": server_text(key, self._lang(), detail)})
 
     def _host_allowed(self) -> bool:
-        return self.headers.get("Host", "") in {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+        hosts = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
+        if LAN_IP:
+            hosts.add(f"{LAN_IP}:{PORT}")
+        return self.headers.get("Host", "") in hosts
+
+    def _own_computer(self) -> bool:
+        client = self.client_address[0]
+        return client == "127.0.0.1" or (bool(LAN_IP) and client == LAN_IP)
+
+    def _signed_in(self) -> bool:
+        if self._own_computer():
+            return True
+        try:
+            morsel = SimpleCookie(self.headers.get("Cookie", "")).get(LOGIN_COOKIE)
+        except CookieError:
+            return False
+        return bool(morsel) and login_valid(morsel.value, time.time())
+
+    def _send_login(self, status: int = 401, message: str = "") -> None:
+        lang = self._lang()
+        text = f'<p class="error">{server_text(message, lang)}</p>' if message else f"<p>{server_text('login_prompt', lang)}</p>"
+        page = (
+            LOGIN_PAGE.replace("__LANG__", lang)
+            .replace("__PASSWORD__", server_text("login_password", lang))
+            .replace("__SIGN_IN__", server_text("login_button", lang))
+            .replace("__MESSAGE__", text)
+        )
+        self._send(status, page.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _handle_login(self, raw: bytes) -> None:
+        client = self.client_address[0]
+        now = time.time()
+        if login_locked(client, now):
+            self._send_login(429, "login_locked")
+            return
+        fields = parse_qs(raw.decode("utf-8", "replace"))
+        token = try_login(client, fields.get("password", [""])[0], now)
+        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if not token:
+            print(f"{stamp} Login failed from {client}")
+            self._send_login(401, "login_wrong")
+            return
+        print(f"{stamp} Login from {client}")
+        self._extra_headers = [
+            ("Set-Cookie", f"{LOGIN_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={LOGIN_HOURS * 3600}"),
+            ("Location", "/"),
+        ]
+        self._send(303, b"", "text/plain; charset=utf-8")
 
     def do_GET(self):
         path = urlsplit(self.path).path
         if not self._host_allowed():
             self._fail(404, "page_not_found")
+        elif not self._signed_in():
+            self._send_login()
         elif path == "/":
             self._send_index()
         elif path.startswith("/assets/"):
@@ -1021,7 +1168,7 @@ class Handler(BaseHTTPRequestHandler):
             .replace("__HAS_KEY__", has_key)
             .replace("__APP_VERSION__", APP_VERSION)
             .replace("__HAS_LOGO__", "true" if company_logo() else "false")
-            .replace("__CAN_QUIT__", "true" if CAN_QUIT else "false")
+            .replace("__CAN_QUIT__", "true" if CAN_QUIT and self._own_computer() else "false")
         )
         self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
 
@@ -1050,7 +1197,10 @@ class Handler(BaseHTTPRequestHandler):
             length = 0
         raw = self.rfile.read(min(max(length, 0), MAX_BODY))
 
-        if not self._host_allowed() or self.headers.get("X-App-Token") != APP_TOKEN:
+        if self.path == "/login" and self._host_allowed() and not self._own_computer():
+            self._handle_login(raw)
+            return
+        if not self._host_allowed() or not self._signed_in() or self.headers.get("X-App-Token") != APP_TOKEN:
             self._fail(403, "forbidden")
             return
         if not 0 < length <= MAX_BODY:
@@ -1080,9 +1230,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._handle_prompt_file(body)
             elif self.path == "/api/restore":
                 self._handle_restore(body)
-            elif self.path == "/api/quit" and CAN_QUIT:
+            elif self.path == "/api/quit" and CAN_QUIT and self._own_computer():
                 self._json(200, {"ok": True})
-                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                threading.Thread(target=stop_servers, args=(self.server,), daemon=True).start()
             elif self.path == "/api/history/list":
                 self._json(200, HISTORY.list(str(body.get("query", "")).strip()))
             elif self.path == "/api/history/get":
@@ -1240,6 +1390,18 @@ class ConsoleServer(ThreadingHTTPServer):
     # On Windows, port reuse lets an old copy keep answering beside a new one.
     allow_reuse_address = os.name != "nt"
 
+    def verify_request(self, request, client_address) -> bool:
+        # This computer connects directly. Others need a password set, and then sign in.
+        client = client_address[0]
+        if client == "127.0.0.1" or (bool(LAN_IP) and client == LAN_IP):
+            return True
+        return bool(LAN_IP) and bool(LAN_PASSWORD) and is_private_ipv4(client)
+
+
+def stop_servers(current: ConsoleServer) -> None:
+    for server in SERVERS or [current]:
+        server.shutdown()
+
 
 def open_browser(url: str) -> None:
     if not os.environ.get("VIGIL_NO_BROWSER"):
@@ -1264,6 +1426,7 @@ def show_error(text: str) -> None:
 
 
 def main() -> None:
+    global LAN_IP, LAN_PASSWORD
     prepare_data_dir()
     url = f"http://{HOST}:{PORT}/"
     try:
@@ -1274,7 +1437,24 @@ def main() -> None:
         else:
             show_error(f"Port {PORT} is in use by another program. Close it, then open Vigil again.")
         return
+    SERVERS.append(server)
+    lan_server = None
+    LAN_IP = read_lan_ip()
+    if LAN_IP:
+        try:
+            lan_server = ConsoleServer((LAN_IP, PORT), Handler)
+        except OSError:
+            print(f"Could not open {LAN_IP}:{PORT}. Check this computer's IP, then restart Vigil.")
+            LAN_IP = ""
+        else:
+            LAN_PASSWORD = read_lan_password()
+            SERVERS.append(lan_server)
+            threading.Thread(target=lan_server.serve_forever, daemon=True).start()
     print(f"Vigil v{APP_VERSION}: {url}")
+    if LAN_IP:
+        print(f"Network address: http://{LAN_IP}:{PORT}/")
+        if LAN_PASSWORD:
+            print(f"Other computers need the password in {LAN_PASSWORD_FILE}")
     print(f"Local model: {OLLAMA_MODEL}")
     print(f"Claude model: {CLAUDE_MODEL}")
     print(f"History: {HISTORY_DB}")
@@ -1286,6 +1466,9 @@ def main() -> None:
         pass
     finally:
         server.server_close()
+        if lan_server:
+            lan_server.shutdown()
+            lan_server.server_close()
 
 
 if __name__ == "__main__":

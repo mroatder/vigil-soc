@@ -1,3 +1,4 @@
+import http.client
 import json
 import os
 import re
@@ -222,6 +223,92 @@ def test_english_local_report():
     assert "```report-en" in answer and "```report-th" not in answer and "The real person is unknown" in answer
     plain = app.build_local_report(alert, "No headings here", "", "en")
     assert "## Local AI Analysis" in plain
+def test_lan_address_is_limited_to_this_computer():
+    with tempfile.TemporaryDirectory() as folder:
+        old_file, old_ip = app.LAN_IP_FILE, app.LAN_IP
+        app.LAN_IP_FILE = Path(folder) / "lan_ip.txt"
+        try:
+            assert app.read_lan_ip() == ""
+            for bad in ("0.0.0.0", "127.0.0.1", "8.8.8.8", "not-an-ip", "::1"):
+                app.LAN_IP_FILE.write_text(bad, encoding="utf-8")
+                assert app.read_lan_ip() == "", bad
+            app.LAN_IP_FILE.write_text("\ufeff10.20.30.40\n", encoding="utf-8")
+            assert app.read_lan_ip() == "10.20.30.40"
+            app.LAN_IP = "10.20.30.40"
+            allow = app.ConsoleServer.verify_request
+            assert allow(None, None, ("127.0.0.1", 5000))
+            assert allow(None, None, ("10.20.30.40", 5000))
+            assert not allow(None, None, ("10.20.30.41", 5000))
+            app.LAN_PASSWORD = "a-long-test-password"
+            assert allow(None, None, ("10.20.30.41", 5000))
+            assert not allow(None, None, ("8.8.8.8", 5000))
+            app.LAN_PASSWORD = ""
+            app.LAN_IP = ""
+            assert not allow(None, None, ("", 5000))
+        finally:
+            app.LAN_IP_FILE, app.LAN_IP = old_file, old_ip
+
+
+def test_password_login_locks_after_failures():
+    with tempfile.TemporaryDirectory() as folder:
+        old_file, old_password = app.LAN_PASSWORD_FILE, app.LAN_PASSWORD
+        app.LAN_PASSWORD_FILE = Path(folder) / "lan_password.txt"
+        try:
+            created = app.read_lan_password()
+            assert len(created) >= app.MIN_PASSWORD and created == app.read_lan_password()
+            app.LAN_PASSWORD_FILE.write_text("short", encoding="utf-8")
+            assert app.read_lan_password() == ""
+            app.LAN_PASSWORD = ""
+            assert app.try_login("10.0.0.8", "", 100.0) == ""
+            app.LOGIN_FAILURES.clear()
+            app.LAN_PASSWORD = created
+            token = app.try_login("10.0.0.5", created, 100.0)
+            assert token and app.login_valid(token, 101.0)
+            assert not app.login_valid(token, 100.0 + app.LOGIN_HOURS * 3600 + 1)
+            for _ in range(app.LOGIN_TRIES):
+                assert app.try_login("10.0.0.9", "wrong", 200.0) == ""
+            assert app.login_locked("10.0.0.9", 201.0)
+            assert not app.login_locked("10.0.0.9", 200.0 + app.LOGIN_LOCK_SECONDS + 1)
+        finally:
+            app.LAN_PASSWORD_FILE, app.LAN_PASSWORD = old_file, old_password
+            app.LOGIN_FAILURES.clear()
+            app.LOGINS.clear()
+
+
+def test_network_access_works_end_to_end():
+    """Another computer must reach the login page and then the app. A release needs this."""
+    server = app.ConsoleServer(("127.0.0.1", 8798), app.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    old_ip, old_password, old_port = app.LAN_IP, app.LAN_PASSWORD, app.PORT
+    app.LAN_IP, app.LAN_PASSWORD, app.PORT = "10.20.30.40", "a-long-test-password", 8798
+
+    def visit(method, path, body=None, headers=None):
+        # 127.0.0.2 stands in for another computer on the network.
+        link = http.client.HTTPConnection("127.0.0.1", 8798, source_address=("127.0.0.2", 0), timeout=5)
+        link.request(method, path, body, {"Host": "10.20.30.40:8798", **(headers or {})})
+        response = link.getresponse()
+        page = response.read().decode("utf-8")
+        link.close()
+        return response.status, response.getheader("Set-Cookie", ""), page
+
+    form = {"Content-Type": "application/x-www-form-urlencoded"}
+    try:
+        status, _cookie, page = visit("GET", "/")
+        assert status == 401 and 'action="/login"' in page and "app-token" not in page and "เข้าสู่ระบบ" in page
+        status, _cookie, page = visit("GET", "/", headers={"Accept-Language": "en-US,en;q=0.9"})
+        assert status == 401 and "Sign in" in page and 'lang="en"' in page
+        status, _cookie, page = visit("POST", "/login", "password=wrong", form)
+        assert status == 401 and "รหัสผ่านไม่ถูกต้อง" in page
+        status, cookie, _page = visit("POST", "/login", "password=a-long-test-password", form)
+        assert status == 303 and app.LOGIN_COOKIE in cookie
+        status, _cookie, page = visit("GET", "/", headers={"Cookie": cookie.split(";")[0]})
+        assert status == 200 and "app-token" in page and 'name="app-can-quit" content="false"' in page
+    finally:
+        app.LAN_IP, app.LAN_PASSWORD, app.PORT = old_ip, old_password, old_port
+        app.LOGIN_FAILURES.clear()
+        app.LOGINS.clear()
+        server.shutdown()
+        server.server_close()
 
 
 def test_server_flow():
@@ -340,5 +427,8 @@ if __name__ == "__main__":
     test_english_changes_the_prompts_and_keeps_thai_as_is()
     test_local_ai_language()
     test_english_local_report()
+    test_lan_address_is_limited_to_this_computer()
+    test_password_login_locks_after_failures()
+    test_network_access_works_end_to_end()
     test_server_flow()
     print("all tests passed")

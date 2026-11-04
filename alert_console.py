@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-APP_VERSION = "2.7.1"
+APP_VERSION = "2.9.0"
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("ALERT_CONSOLE_PORT", "8765"))
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434/api/chat")
@@ -231,6 +231,83 @@ Rules for the blocks:
   queries. Use one line for each text field. Name a team or role for each action.
 - Never present an unproven impact as fact. Say it is not confirmed yet."""
 
+# The Thai prompts above stay as written. English swaps only the parts that set the output language.
+ENGLISH_PROMPT_TEXT = (
+    ("Reply in Thai.", "Reply in English."),
+    ("1. สรุป:", "1. Summary:"),
+    ("2. ถอดรหัสการโจมตี:", "2. Attack Decoding:"),
+    ("3. สิ่งที่ยืนยันได้และยังไม่รู้:", "3. Confirmed and Unknown:"),
+    ("4. สมมติฐาน:", "4. Hypotheses:"),
+    ("5. ระดับความสำคัญ:", "5. Severity:"),
+    ("6. แผนตรวจสอบ:", "6. Investigation Plan:"),
+    ("7. วิธีแก้:", "7. Remediation:"),
+    ("8. Rule และ Decoder:", "8. Rule and Decoder:"),
+    ('Write "ไม่ต้องแก้"', 'Write "No change needed"'),
+    ("9. ตรวจคำตอบของ Local AI:", "9. Local AI Review:"),
+    ("10. ความมั่นใจ:", "10. Confidence:"),
+    ('"เป็นไปได้ ยังไม่ยืนยันจาก Log"', '"Possible, not confirmed by the log"'),
+    ("one short Thai sentence", "one short English sentence"),
+    ("short task in Thai", "short task in English"),
+    ("short Thai step name", "short English step name"),
+    ("short Thai task", "short English task"),
+)
+
+# Ollama drops the Modelfile's SYSTEM text when a request has its own system
+# message, so the language instruction travels with the user message.
+LOCAL_ENGLISH = """Vigil instruction: reply in English, not Thai. Keep the rest of your instructions.
+Use these headings: 1. Summary 2. Source 3. Key Fields 4. Severity 5. What to Check Next 6. Possible Fixes 7. Confidence"""
+
+# Each message is (Thai, English).
+SERVER_TEXT = {
+    "no_api_key": ("ยังไม่ได้ตั้ง ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY is not set"),
+    "page_not_found": ("ไม่พบหน้า", "Page not found"),
+    "web_missing": ("ไม่พบไฟล์หน้าเว็บในโฟลเดอร์ web/dist", "The web files are missing from web/dist"),
+    "file_not_found": ("ไม่พบไฟล์", "File not found"),
+    "forbidden": ("ไม่อนุญาต", "Not allowed"),
+    "too_large": ("ข้อมูลใหญ่เกินไป", "The request is too large"),
+    "api_not_found": ("ไม่พบ API", "API not found"),
+    "upstream_status": ("บริการปลายทางตอบ HTTP {detail}", "The remote service returned HTTP {detail}"),
+    "upstream_down": ("เชื่อมต่อบริการไม่ได้: {detail}", "Could not connect to the service: {detail}"),
+    "case_missing": ("ไม่พบเคสนี้ ให้วิเคราะห์ใหม่", "Case not found. Analyze the alert again."),
+    "nothing_to_send": ("ไม่มีข้อมูลสำหรับส่ง", "There is nothing to send"),
+    "real_data_found": (
+        "ยังพบข้อมูลจริงในช่องตรวจสอบ จึงไม่ส่งให้ AI ภายนอก: {detail}",
+        "Real data is still in the review box, so it was not sent to the external AI: {detail}",
+    ),
+    "no_local_result": ("ยังไม่มีผล Local AI สำหรับสร้างรายงาน", "There is no Local AI result to build a report from"),
+    "case_deleted": ("ไม่พบเคสนี้ อาจถูกลบไปแล้ว", "Case not found. It may have been deleted."),
+    "bad_logo_type": ("รูปภาพต้องเป็นไฟล์ PNG, JPG หรือ SVG", "The image must be a PNG, JPG, or SVG file"),
+    "logo_too_large": ("ขนาดไฟล์โลโก้ต้องไม่เกิน 2 MB", "The logo file must be 2 MB or smaller"),
+}
+
+FALLBACK_TEXT = {
+    "th": {
+        "source": "IP {ip} ยังไม่ทราบตัวบุคคลจริง",
+        "defense": "ระบบบันทึกการกระทำ {action}",
+        "impact": "ยังไม่ยืนยันผลกระทบ",
+    },
+    "en": {
+        "source": "IP {ip}. The real person is unknown",
+        "defense": "The system recorded the action {action}",
+        "impact": "Impact is not confirmed yet",
+    },
+}
+
+PROMPT_FILE_HELP = {
+    "th": (
+        "> **คำแนะนำวิธีใช้งาน:**\n"
+        "> 1. คัดลอกเนื้อหาทั้งหมดในไฟล์นี้ ไปส่งให้ AI ภายนอก (ChatGPT, Gemini, Claude ฯลฯ)\n"
+        "> 2. เมื่อ AI ตอบกลับมา ให้กด **ปุ่มคัดลอก (Copy) ทั้งข้อความที่แถบล่างสุดใต้คำตอบของ AI** (ห้ามก๊อปปี้แยกทีละกล่องโค้ด)\n"
+        "> 3. นำข้อความที่คัดลอกมา วางในช่องแชตของ Vigil แล้วกดส่ง เพื่อเรนเดอร์ Visual Dashboard ทันที\n\n"
+    ),
+    "en": (
+        "> **How to use this file:**\n"
+        "> 1. Copy everything in this file and send it to an external AI (ChatGPT, Gemini, Claude, or another).\n"
+        "> 2. When the AI answers, click the **Copy button below the whole answer**. Do not copy each code block separately.\n"
+        "> 3. Paste the answer into the Vigil chat box and send it to open the Visual Dashboard.\n\n"
+    ),
+}
+
 DEFAULT_ENVIRONMENT = """- A firewall with WAF and IPS sends syslog to Wazuh. Zabbix monitors availability.
 - Wazuh agents run on the servers.
 - Placeholder names describe the role of a host, such as [DOMAIN_CONTROLLER_*].
@@ -254,10 +331,11 @@ BLOCK_RE = re.compile(
     r"```[ \t]*(summary|flow|killchain|checks|report-th|report-en)[ \t]*\r?\n(.*?)\r?\n\s*```", re.S
 )
 LOCAL_HEADING_RE = re.compile(
-    r"^[#*\s]*\d+\.\s*\**\s*(สรุป|แหล่งที่มา|ฟิลด์สำคัญ|ระดับความสำคัญ|ควรตรวจอะไรต่อ|วิธีแก้[^:*\n]*|ความมั่นใจ)\s*:?\s*\**\s*$",
-    re.M,
+    r"^[#*\s]*\d+\.\s*\**\s*(สรุป|แหล่งที่มา|ฟิลด์สำคัญ|ระดับความสำคัญ|ควรตรวจอะไรต่อ|วิธีแก้[^:*\n]*|ความมั่นใจ"
+    r"|Summary|Source|Key Fields|Severity|What to Check Next|Possible Fixes[^:*\n]*|Confidence)\s*:?\s*\**\s*$",
+    re.M | re.I,
 )
-LOCAL_SEVERITY_RE = re.compile(r"ระดับความสำคัญ\s*:\s*\**\s*(Info|Low|Medium|High|Critical)", re.I)
+LOCAL_SEVERITY_RE = re.compile(r"(?:ระดับความสำคัญ|Severity)\s*:\s*\**\s*(Info|Low|Medium|High|Critical)", re.I)
 THAI_TIME = timezone(timedelta(hours=7))
 SEVERITIES = {"info": "Info", "low": "Low", "medium": "Medium", "high": "High", "critical": "Critical"}
 KEY_VALUE_RE = re.compile(r'"([\w.-]+)"\s*:\s*"((?:[^"\\]|\\.)*)"')
@@ -310,8 +388,19 @@ def load_environment() -> str:
     return DEFAULT_ENVIRONMENT
 
 
-def claude_system() -> str:
-    return SYSTEM_CLAUDE.replace("{{ENVIRONMENT}}", load_environment())
+def server_text(key: str, lang: str = "th", detail: object = "") -> str:
+    return SERVER_TEXT[key][1 if lang == "en" else 0].replace("{detail}", str(detail))
+
+
+def prompt_for(prompt: str, lang: str) -> str:
+    if lang == "en":
+        for thai, english in ENGLISH_PROMPT_TEXT:
+            prompt = prompt.replace(thai, english)
+    return prompt
+
+
+def claude_system(lang: str = "th") -> str:
+    return prompt_for(SYSTEM_CLAUDE, lang).replace("{{ENVIRONMENT}}", load_environment())
 
 
 def prepare_data_dir() -> None:
@@ -512,28 +601,29 @@ def chat_ollama(messages: list[dict]) -> str:
     return data.get("message", {}).get("content", "").strip()
 
 
-def call_ollama(alert: str) -> str:
-    return chat_ollama([{"role": "user", "content": alert}])
+def call_ollama(alert: str, lang: str = "th") -> str:
+    content = f"{alert}\n\n{LOCAL_ENGLISH}" if lang == "en" else alert
+    return chat_ollama([{"role": "user", "content": content}])
 
 
-def call_ollama_report(alert: str, local_analysis: str) -> str:
+def call_ollama_report(alert: str, local_analysis: str, lang: str = "th") -> str:
     prepared, _terms = prepare_alert(alert)
     return chat_ollama([
-        {"role": "system", "content": SYSTEM_LOCAL_REPORT},
+        {"role": "system", "content": prompt_for(SYSTEM_LOCAL_REPORT, lang)},
         {"role": "user", "content": f"<alert>\n{prepared}\n</alert>\n\n<local_analysis>\n{local_analysis}\n</local_analysis>"},
     ])
 
 
-def call_claude(content: str) -> tuple[str, dict]:
+def call_claude(content: str, lang: str = "th") -> tuple[str, dict]:
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("ยังไม่ได้ตั้ง ANTHROPIC_API_KEY")
+        raise RuntimeError(server_text("no_api_key", lang))
     data = post_json(
         CLAUDE_URL,
         {
             "model": CLAUDE_MODEL,
             "max_tokens": CLAUDE_MAX_TOKENS,
-            "system": claude_system(),
+            "system": claude_system(lang),
             "messages": [{"role": "user", "content": content}],
         },
         {"x-api-key": api_key, "anthropic-version": "2023-06-01"},
@@ -653,23 +743,24 @@ def first_section(local_analysis: str) -> str:
     return " ".join(text.split())
 
 
-def fallback_report(alert: str, overview: str) -> str:
-    """Build a Thai report from alert facts when the model skipped that block."""
+def fallback_report(alert: str, overview: str, lang: str = "th") -> str:
+    """Build a report from alert facts when the model skipped that block."""
+    words = FALLBACK_TEXT[lang]
     source = alert_source(alert)
     data = source.get("data") if isinstance(source.get("data"), dict) else {}
     lines = [f"title: {case_title(alert)}", f"summary: {overview[:400]}"]
     if data.get("srcip"):
-        lines.append(f"source: IP {data['srcip']} ยังไม่ทราบตัวบุคคลจริง")
+        lines.append("source: " + words["source"].format(ip=data["srcip"]))
     if data.get("dstip"):
         lines.append(f"target: {data['dstip']}")
     action = alert_action(alert)
     if action:
-        lines.append(f"defense: ระบบบันทึกการกระทำ {action}")
-    lines.append("impact: ยังไม่ยืนยันผลกระทบ")
+        lines.append("defense: " + words["defense"].format(action=action))
+    lines.append("impact: " + words["impact"])
     return "\n".join(lines)
 
 
-def build_local_report(alert: str, local_analysis: str, generated: str) -> str:
+def build_local_report(alert: str, local_analysis: str, generated: str, lang: str = "th") -> str:
     """Join the model's blocks, facts from the alert, and the Local AI analysis."""
     blocks = dict(BLOCK_RE.findall(generated))
     summary = key_values(blocks.get("summary", ""))
@@ -698,12 +789,15 @@ def build_local_report(alert: str, local_analysis: str, generated: str) -> str:
         return f"## {number}. {match.group(1).strip()}"
 
     body = LOCAL_HEADING_RE.sub(heading, body)
-    parts.append(body if number else f"## ผลวิเคราะห์ Local AI\n\n{body}")
+    title = "Local AI Analysis" if lang == "en" else "ผลวิเคราะห์ Local AI"
+    parts.append(body if number else f"## {title}\n\n{body}")
 
-    report_th = blocks.get("report-th") or fallback_report(alert, overview)
-    parts.append(f"```report-th\n{report_th}\n```")
-    if "report-en" in blocks:
-        parts.append(f"```report-en\n{blocks['report-en']}\n```")
+    # Only the language of the analysis can fall back, because the overview is written in it.
+    for code in ("th", "en"):
+        name = f"report-{code}"
+        report = blocks.get(name) or (fallback_report(alert, overview, code) if code == lang else "")
+        if report:
+            parts.append(f"```{name}\n{report}\n```")
     return "\n\n".join(parts)
 
 
@@ -892,13 +986,20 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, status: int, payload: dict) -> None:
         self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
+    def _lang(self) -> str:
+        chosen = self.headers.get("X-App-Lang") or self.headers.get("Accept-Language", "")
+        return "en" if chosen[:2].lower() == "en" else "th"
+
+    def _fail(self, status: int, key: str, detail: object = "") -> None:
+        self._json(status, {"error": server_text(key, self._lang(), detail)})
+
     def _host_allowed(self) -> bool:
         return self.headers.get("Host", "") in {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 
     def do_GET(self):
         path = urlsplit(self.path).path
         if not self._host_allowed():
-            self._json(404, {"error": "ไม่พบหน้า"})
+            self._fail(404, "page_not_found")
         elif path == "/":
             self._send_index()
         elif path.startswith("/assets/"):
@@ -906,12 +1007,12 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/company-logo":
             self._send_logo()
         else:
-            self._json(404, {"error": "ไม่พบหน้า"})
+            self._fail(404, "page_not_found")
 
     def _send_index(self) -> None:
         index = WEB_DIST / "index.html"
         if not index.is_file():
-            self._json(500, {"error": "ไม่พบไฟล์หน้าเว็บในโฟลเดอร์ web/dist"})
+            self._fail(500, "web_missing")
             return
         has_key = "true" if os.environ.get("ANTHROPIC_API_KEY", "").strip() else "false"
         page = (
@@ -927,7 +1028,7 @@ class Handler(BaseHTTPRequestHandler):
     def _send_logo(self) -> None:
         logo = company_logo()
         if logo is None:
-            self._json(404, {"error": "ไม่พบไฟล์"})
+            self._fail(404, "file_not_found")
             return
         self._send(200, logo.read_bytes(), MIME_TYPES[logo.suffix.lower()])
 
@@ -936,7 +1037,7 @@ class Handler(BaseHTTPRequestHandler):
         target = (root / path.lstrip("/")).resolve()
         content_type = MIME_TYPES.get(target.suffix.lower())
         if root not in target.parents or content_type is None or not target.is_file():
-            self._json(404, {"error": "ไม่พบไฟล์"})
+            self._fail(404, "file_not_found")
             return
         self._send(200, target.read_bytes(), content_type, "public, max-age=31536000, immutable")
 
@@ -950,15 +1051,15 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(min(max(length, 0), MAX_BODY))
 
         if not self._host_allowed() or self.headers.get("X-App-Token") != APP_TOKEN:
-            self._json(403, {"error": "ไม่อนุญาต"})
+            self._fail(403, "forbidden")
             return
         if not 0 < length <= MAX_BODY:
-            self._json(413, {"error": "ข้อมูลใหญ่เกินไป"})
+            self._fail(413, "too_large")
             return
         try:
             body = json.loads(raw.decode("utf-8"))
             if self.path == "/api/local":
-                self._json(200, {"answer": call_ollama(str(body.get("alert", "")))})
+                self._json(200, {"answer": call_ollama(str(body.get("alert", "")), self._lang())})
             elif self.path == "/api/local-report":
                 self._handle_local_report(body)
             elif self.path == "/api/mask":
@@ -1000,11 +1101,11 @@ class Handler(BaseHTTPRequestHandler):
             elif self.path == "/api/logo/delete":
                 self._handle_logo_delete()
             else:
-                self._json(404, {"error": "ไม่พบ API"})
+                self._fail(404, "api_not_found")
         except urllib.error.HTTPError as error:
-            self._json(502, {"error": f"บริการปลายทางตอบ HTTP {error.code}"})
+            self._fail(502, "upstream_status", error.code)
         except urllib.error.URLError as error:
-            self._json(502, {"error": f"เชื่อมต่อบริการไม่ได้: {error.reason}"})
+            self._fail(502, "upstream_down", error.reason)
         except Exception as error:  # Keep alert contents out of logs and responses.
             self._json(400, {"error": str(error)[:300]})
 
@@ -1012,15 +1113,15 @@ class Handler(BaseHTTPRequestHandler):
         """Return the session and preview, or answer with an error."""
         masker = find_masker(str(body.get("session", "")))
         if masker is None:
-            self._json(400, {"error": "ไม่พบเคสนี้ ให้วิเคราะห์ใหม่"})
+            self._fail(400, "case_missing")
             return None
         preview = str(body.get("preview", "")).strip()
         if not preview:
-            self._json(400, {"error": "ไม่มีข้อมูลสำหรับส่ง"})
+            self._fail(400, "nothing_to_send")
             return None
         residual = masker.residual(preview)
         if residual:
-            self._json(400, {"error": "ยังพบข้อมูลจริงในช่องตรวจสอบ จึงไม่ส่งให้ AI ภายนอก: " + ", ".join(residual[:5])})
+            self._fail(400, "real_data_found", ", ".join(residual[:5]))
             return None
         return masker, preview
 
@@ -1029,7 +1130,7 @@ class Handler(BaseHTTPRequestHandler):
         if checked is None:
             return
         masker, preview = checked
-        answer, usage = call_claude(preview)
+        answer, usage = call_claude(preview, self._lang())
         restored = masker.restore(answer)
         case_id = str(body.get("session", ""))
         saved = keep(HISTORY.save_preview, case_id, preview) and keep(HISTORY.save_answer, case_id, restored)
@@ -1040,7 +1141,7 @@ class Handler(BaseHTTPRequestHandler):
         if checked is None:
             return
         keep(HISTORY.save_preview, str(body.get("session", "")), checked[1])
-        self._json(200, {"prompt": f"{claude_system()}\n\n{checked[1]}"})
+        self._json(200, {"prompt": f"{claude_system(self._lang())}\n\n{checked[1]}"})
 
     def _handle_prompt_file(self, body: dict) -> None:
         checked = self._checked_preview(body)
@@ -1048,14 +1149,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         _masker, preview = checked
         keep(HISTORY.save_preview, str(body.get("session", "")), preview)
-        system_prompt = claude_system()
+        lang = self._lang()
+        system_prompt = claude_system(lang)
         content = (
             "# Vigil SOC — AI Analysis Request\n\n"
-            "> **คำแนะนำวิธีใช้งาน:**\n"
-            "> 1. คัดลอกเนื้อหาทั้งหมดในไฟล์นี้ ไปส่งให้ AI ภายนอก (ChatGPT, Gemini, Claude ฯลฯ)\n"
-            "> 2. เมื่อ AI ตอบกลับมา ให้กด **ปุ่มคัดลอก (Copy) ทั้งข้อความที่แถบล่างสุดใต้คำตอบของ AI** (ห้ามก๊อปปี้แยกทีละกล่องโค้ด)\n"
-            "> 3. นำข้อความที่คัดลอกมา วางในช่องแชตของ Vigil แล้วกดส่ง เพื่อเรนเดอร์ Visual Dashboard ทันที\n\n"
-            "---\n\n"
+            + PROMPT_FILE_HELP[lang]
+            + "---\n\n"
             "## System Prompt\n\n"
             "Paste the block below as the **System** / **Custom Instructions** field in the AI you are using,\n"
             "or paste it at the very beginning of the conversation before the alert.\n\n"
@@ -1078,7 +1177,7 @@ class Handler(BaseHTTPRequestHandler):
         case_id = str(body.get("session", ""))
         masker = find_masker(case_id)
         if masker is None:
-            self._json(400, {"error": "ไม่พบเคสนี้ ให้วิเคราะห์ใหม่"})
+            self._fail(400, "case_missing")
             return
         restored = masker.restore(str(body.get("answer", "")))
         self._json(200, {"answer": restored, "saved": keep(HISTORY.save_answer, case_id, restored)})
@@ -1087,16 +1186,17 @@ class Handler(BaseHTTPRequestHandler):
         alert = str(body.get("alert", ""))
         local_analysis = str(body.get("local", ""))
         if not alert.strip() or not local_analysis.strip():
-            self._json(400, {"error": "ยังไม่มีผล Local AI สำหรับสร้างรายงาน"})
+            self._fail(400, "no_local_result")
             return
-        answer = build_local_report(alert, local_analysis, call_ollama_report(alert, local_analysis))
+        lang = self._lang()
+        answer = build_local_report(alert, local_analysis, call_ollama_report(alert, local_analysis, lang), lang)
         saved = keep(HISTORY.save_answer, str(body.get("session", "")), answer)
         self._json(200, {"answer": answer, "saved": saved})
 
     def _handle_history_get(self, body: dict) -> None:
         case = HISTORY.get(str(body.get("id", "")))
         if case is None:
-            self._json(404, {"error": "ไม่พบเคสนี้ อาจถูกลบไปแล้ว"})
+            self._fail(404, "case_deleted")
             return
         self._json(200, {"case": case})
 
@@ -1105,13 +1205,13 @@ class Handler(BaseHTTPRequestHandler):
         data_uri = str(body.get("data", ""))
         match = re.match(r"^data:image/(png|jpeg|svg\+xml);base64,(.+)$", data_uri)
         if not match:
-            self._json(400, {"error": "รูปภาพต้องเป็นไฟล์ PNG, JPG หรือ SVG"})
+            self._fail(400, "bad_logo_type")
             return
         ext_map = {"png": ".png", "jpeg": ".jpg", "svg+xml": ".svg"}
         ext = ext_map[match.group(1)]
         raw_bytes = base64.b64decode(match.group(2))
         if len(raw_bytes) > 2 * 1024 * 1024:
-            self._json(400, {"error": "ขนาดไฟล์โลโก้ต้องไม่เกิน 2 MB"})
+            self._fail(400, "logo_too_large")
             return
         # Delete old logo files first
         for name in LOGO_NAMES:

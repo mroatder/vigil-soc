@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import tempfile
 import threading
 import urllib.error
@@ -192,11 +193,42 @@ def test_local_report_survives_bad_model_output():
     assert "## ผลวิเคราะห์ Local AI" in plain
 
 
+def test_english_changes_the_prompts_and_keeps_thai_as_is():
+    thai = re.compile("[\u0e00-\u0e7f]")
+    english = app.claude_system("en") + app.prompt_for(app.SYSTEM_LOCAL_REPORT, "en")
+    assert not thai.search(english) and "Reply in English." in english
+    assert "in Thai" not in english.replace("report-th in Thai", "").replace("report-th in\n  Thai", "")
+    assert app.claude_system("th") == app.claude_system() and "Reply in Thai." in app.claude_system()
+    assert app.prompt_for(app.SYSTEM_LOCAL_REPORT, "th") == app.SYSTEM_LOCAL_REPORT
+
+
+def test_local_ai_language():
+    seen = []
+    real, app.chat_ollama = app.chat_ollama, lambda messages: seen.append(messages) or "ok"
+    try:
+        app.call_ollama("alert text")
+        app.call_ollama("alert text", "en")
+    finally:
+        app.chat_ollama = real
+    assert seen[0] == [{"role": "user", "content": "alert text"}]
+    assert len(seen[1]) == 1 and seen[1][0]["role"] == "user" and "reply in English" in seen[1][0]["content"]
+
+
+def test_english_local_report():
+    alert = json.dumps({"_source": {"data": {"srcip": "203.0.113.50", "action": "Block"}, "rule": {"description": "Scan"}}})
+    text = "1. Summary:\nThe WAF blocked a scan.\n\n4. Severity:\nSeverity: High\n\n5. What to Check Next:\n1. Check the web log\n\n6. Possible fixes:\n- Close the port"
+    answer = app.build_local_report(alert, text, "not a report", "en")
+    assert "## 1. Summary" in answer and "## 4. Possible fixes" in answer and app.read_summary(answer)[0] == "High"
+    assert "```report-en" in answer and "```report-th" not in answer and "The real person is unknown" in answer
+    plain = app.build_local_report(alert, "No headings here", "", "en")
+    assert "## Local AI Analysis" in plain
+
+
 def test_server_flow():
-    app.call_ollama = lambda alert: "Local saw 10.20.30.254 on APP-SERVER-01"
+    app.call_ollama = lambda alert, lang="th": "Local saw 10.20.30.254 on APP-SERVER-01"
     seen = {}
 
-    def fake_claude(content):
+    def fake_claude(content, lang="th"):
         seen["content"] = content
         token = app.SESSIONS.items[next(reversed(app.SESSIONS.items))].value_to_token["10.20.30.254"]
         return f"ตรวจ {token}", {"input_tokens": 10, "output_tokens": 5}
@@ -230,7 +262,7 @@ def test_server_flow():
         token = masker.value_to_token["10.20.30.254"]
         restored = call("/api/restore", {"session": preview["session"], "answer": f"ตรวจ {token}"})
         assert restored["answer"] == "ตรวจ 10.20.30.254"
-        app.call_ollama_report = lambda alert, local: "```summary\nseverity: low\nverdict: ทดสอบ\n```"
+        app.call_ollama_report = lambda alert, local, lang="th": "```summary\nseverity: low\nverdict: ทดสอบ\n```"
         made = call("/api/local-report", {"session": preview["session"], "alert": sample_alert(), "local": LOCAL_TEXT})
         assert "source: local" in made["answer"] and made["saved"] is True
         restored = call("/api/restore", {"session": preview["session"], "answer": f"ตรวจ {token}"})
@@ -265,6 +297,23 @@ def test_server_flow():
             raise AssertionError("quit must be off when the app has a console")
         except urllib.error.HTTPError as error:
             assert error.code == 404
+        english = urllib.request.Request(
+            "http://127.0.0.1:8799/api/prompt-file",
+            data=json.dumps({"session": preview["session"], "preview": preview["preview"]}).encode(),
+            headers={"Content-Type": "application/json", "X-App-Token": app.APP_TOKEN, "X-App-Lang": "en"},
+            method="POST",
+        )
+        with urllib.request.urlopen(english) as response:
+            content = json.load(response)["content"]
+        assert "How to use this file" in content and "Reply in English." in content
+        english.full_url = "http://127.0.0.1:8799/api/history/get"
+        english.data = json.dumps({"id": "missing"}).encode()
+        english.remove_header("Content-length")
+        try:
+            urllib.request.urlopen(english)
+            raise AssertionError("a missing case was found")
+        except urllib.error.HTTPError as error:
+            assert json.load(error)["error"] == "Case not found. It may have been deleted."
         call("/api/history/delete", {"id": preview["session"]})
         try:
             call("/api/history/get", {"id": preview["session"]})
@@ -288,5 +337,8 @@ if __name__ == "__main__":
     test_failed_save_does_not_stop_analysis()
     test_local_report_uses_alert_facts_over_model()
     test_local_report_survives_bad_model_output()
+    test_english_changes_the_prompts_and_keeps_thai_as_is()
+    test_local_ai_language()
+    test_english_local_report()
     test_server_flow()
     print("all tests passed")

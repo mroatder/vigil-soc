@@ -1,5 +1,6 @@
 <script setup>
 import InlineText from './InlineText.vue'
+import { t } from '../i18n.js'
 
 defineProps({ blocks: { type: Array, required: true } })
 defineEmits(['copy'])
@@ -28,7 +29,7 @@ defineEmits(['copy'])
       </div>
       <div v-else-if="block.type === 'code'" class="bg-raised rounded-2xl p-4 flex items-start gap-3 min-w-0">
         <pre class="flex-1 min-w-0 overflow-x-auto font-mono text-[13.5px] leading-6">{{ block.value }}</pre>
-        <button type="button" class="text-tint text-[15px] font-normal shrink-0 min-h-[32px]" @click="$emit('copy', block.value)">คัดลอก</button>
+        <button type="button" class="text-tint text-[15px] font-normal shrink-0 min-h-[32px]" @click="$emit('copy', block.value)">{{ t('copy') }}</button>
       </div>
     </template>
   </div>

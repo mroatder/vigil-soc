@@ -12,7 +12,7 @@ const props = defineProps({
 
 const COPY = {
   th: {
-    title: 'รายงานเหตุการณ์ด้านความปลอดภัย', systemLine: 'ระบบวิเคราะห์เหตุการณ์ความปลอดภัย', issueTitle: 'ข้อมูลการออกรายงาน', reportId: 'เลขที่รายงาน', issuedAt: 'วันเวลาที่ออกรายงาน', system: 'ระบบที่สร้างรายงาน', dataSource: 'แหล่งข้อมูล', dataSourceValue: 'Wazuh SIEM และ Log จากอุปกรณ์ Firewall', engine: 'การวิเคราะห์', engineLocal: 'Local AI ภายในเครื่องขององค์กร', engineClaude: 'Local AI ภายในเครื่องและ AI ภายนอก โดยส่งเฉพาะข้อมูลที่ปดบังค่าสำคัญแล้ว', severity: 'ระดับความสำคัญ', time: 'เวลาเกิดเหตุ', action: 'การกระทำของระบบ', author: 'ผู้จัดทำ', source: 'วิเคราะห์โดย',
+    title: 'รายงานเหตุการณ์ด้านความปลอดภัย', systemLine: 'ระบบวิเคราะห์เหตุการณ์ความปลอดภัย', issueTitle: 'ข้อมูลการออกรายงาน', reportId: 'เลขที่รายงาน', issuedAt: 'วันเวลาที่ออกรายงาน', system: 'ระบบที่สร้างรายงาน', dataSource: 'แหล่งข้อมูล', dataSourceValue: 'Wazuh SIEM และ Log จากอุปกรณ์ Firewall', engine: 'การวิเคราะห์', engineLocal: 'Local AI ภายในเครื่องขององค์กร', engineClaude: 'Local AI ภายในเครื่องและ AI ภายนอก โดยส่งเฉพาะข้อมูลที่ปิดบังค่าสำคัญแล้ว', severity: 'ระดับความสำคัญ', time: 'เวลาเกิดเหตุ', action: 'การกระทำของระบบ', author: 'ผู้จัดทำ', source: 'วิเคราะห์โดย',
     eventConfidence: 'ความมั่นใจของเหตุการณ์', impactConfidence: 'ความมั่นใจของผลกระทบ',
     missing: 'ยังไม่มีรายงานภาษานี้ ให้สร้างใหม่ด้วย Local AI หรือส่งให้ AI ภายนอก',
     result: 'ผลลัพธ์', summary: 'สรุปเหตุการณ์', facts: 'ใคร ทำอะไร และใครป้องกัน', impact: 'ผลกระทบ', timeline: 'ลำดับเหตุการณ์',

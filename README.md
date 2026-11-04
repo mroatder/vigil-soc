@@ -25,6 +25,7 @@ Vigil keeps the real data on your computer. A Local AI reads it first. You can s
 - **Exports a Thai or English PDF report** that states who did what, who stopped it, the impact, and what is still unconfirmed.
 - **Reads the defense result directly from the log**, so "blocked" in a report never depends on what a model wrote.
 - **Keeps case history** on your computer, with search by IP, host, or rule.
+- **Works in Thai or English.** Switch the language in the sidebar, and new AI analysis follows it.
 
 ## How it works
 
@@ -134,6 +135,7 @@ From source, private files stay beside `alert_console.py`, and `.gitignore` excl
 ```bash
 python test_alert_console.py
 node web/tests/facts.test.mjs
+node web/tests/i18n.test.mjs
 ```
 
 Run `build_exe.bat` to build `dist\Vigil.exe`. GitHub Actions tests each push on Windows, starts the built program, and publishes the installer.

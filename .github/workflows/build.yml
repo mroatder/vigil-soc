@@ -31,6 +31,7 @@ jobs:
         run: |
           python test_alert_console.py
           node web/tests/facts.test.mjs
+          node web/tests/i18n.test.mjs
 
       - name: Build Vigil.exe
         shell: cmd
